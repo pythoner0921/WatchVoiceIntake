@@ -40,7 +40,12 @@ targets:
         embed: true
 
   WatchVoiceIntakeWatch:
-    type: application.watchapp2
+    # watchOS 9+ single-target app — NOT application.watchapp2 (that's the
+    # pre-watchOS7 WatchKit App+Extension bundle format; using it alongside
+    # a modern deploymentTarget makes XcodeGen emit both a normal copy phase
+    # and an "Embed Watch Content" phase for the same output path, which
+    # xcodebuild rejects as "Multiple commands produce ...WatchVoiceIntakeWatch").
+    type: application
     platform: watchOS
     sources:
       - path: Watch
