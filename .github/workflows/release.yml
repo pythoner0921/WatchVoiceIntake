@@ -121,6 +121,14 @@ jobs:
           </plist>
           PLIST
 
+      - name: Debug — dump valid exportOptionsPlist method values
+        run: |
+          xcodebuild -help 2>&1 | grep -B2 -A25 "exportOptionsPlist" || true
+          echo "--- archive Info.plist ---"
+          plutil -p build/WatchVoiceIntake.xcarchive/Info.plist || true
+          echo "--- ExportOptions.plist as written ---"
+          plutil -p build/ExportOptions.plist || true
+
       - name: Export IPA
         run: |
           xcodebuild -exportArchive \
