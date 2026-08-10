@@ -106,6 +106,31 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: fastlane release
 
+      # xcodebuild writes a detailed IDEDistribution log (which specific
+      # distribution method got rejected and why) to a temp dir that's
+      # discarded when the runner is torn down — every failure so far only
+      # showed the generic wrapper error, never this. Xcode Cloud's
+      # equivalent log (downloaded separately via the App Store Connect
+      # API) showed EVERY distribution method rejected with "doesn't
+      # support distributing archive" for a wrong-product archive; worth
+      # comparing against what our correctly-scoped archive here actually
+      # says instead of continuing to guess from the wrapper error alone.
+      - name: Save distribution logs
+        if: always()
+        run: |
+          mkdir -p dist-logs
+          find "$TMPDIR" /var/folders -maxdepth 4 -iname "*.xcdistributionlogs" -exec cp -r {} dist-logs/ \; 2>/dev/null || true
+          find ~/Library/Developer/Xcode/DerivedData -iname "*.xcdistributionlogs" -exec cp -r {} dist-logs/ \; 2>/dev/null || true
+          ls -la dist-logs/
+
+      - name: Upload distribution logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-logs
+          path: dist-logs/
+          if-no-files-found: warn
+
       # Same "Unknown Distribution Error" across raw xcodebuild AND
       # fastlane, AND Xcode 16.4 AND 26.3 — ruling out both the tool and
       # the Xcode version. The one thing common to every attempt is the
