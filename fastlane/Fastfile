@@ -1,0 +1,37 @@
+default_platform(:ios)
+
+# Fastlane instead of hand-rolled xcodebuild archive/export/upload calls —
+# after many failed attempts pinning down undocumented Xcode 16 CLI export
+# behavior (see PROJECT_LOG.md's "release.yml 反复失败排查" section),
+# switched to the tool that's specifically built to absorb exactly these
+# per-Xcode-version quirks instead of us rediscovering them one at a time.
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :release do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APPSTORE_KEY_ID"],
+      issuer_id: ENV["APPSTORE_ISSUER_ID"],
+      key_content: ENV["APPSTORE_PRIVATE_KEY"],
+      is_key_content_base64: false,
+    )
+
+    build_app(
+      project: "WatchVoiceIntake.xcodeproj",
+      scheme: "WatchVoiceIntake",
+      configuration: "Release",
+      export_method: "app-store",
+      export_team_id: ENV["APPLE_TEAM_ID"],
+      export_options: {
+        provisioningProfiles: {
+          "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
+          "com.shuyinlab.watchvoiceintake.watchkitapp" => "WatchVoiceIntakeWatch AppStore",
+        }
+      }
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+    )
+  end
+end

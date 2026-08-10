@@ -12,10 +12,18 @@ name: Release (TestFlight)
 #   APPSTORE_KEY_ID          - App Store Connect API key Key ID
 #   APPSTORE_PRIVATE_KEY     - contents of the downloaded .p8 API key file
 #   APPLE_TEAM_ID            - Apple Developer Team ID (Membership page)
+#   CERTIFICATE_P12_BASE64   - base64 of the exported Apple Distribution
+#                              .p12 (cert + private key)
+#   CERTIFICATE_PASSWORD     - password the .p12 was exported with
 #
-# Uses automatic signing + -allowProvisioningUpdates, so certificates and
-# provisioning profiles are created/managed by Xcode via the API key —
-# no manually-exported .p12/.mobileprovision files to keep in sync.
+# Build/export/upload go through fastlane, not hand-rolled xcodebuild
+# archive/export/altool calls — after many failed attempts pinning down
+# undocumented Xcode 16 CLI export behavior (see PROJECT_LOG.md's "release.yml
+# 反复失败排查" section), switched to the tool built specifically to absorb
+# these per-Xcode-version quirks. Signing is manual, referencing the two App
+# Store provisioning profiles created once in the Developer Portal (see
+# PROJECT_LOG.md) — not automatic signing, which proved unreliable in CI for
+# a brand-new team even after a Distribution certificate existed.
 on:
   workflow_dispatch:
 
@@ -28,26 +36,20 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and fastlane
+        run: |
+          brew install xcodegen
+          gem install fastlane -N
 
       - name: Generate Xcode project
         run: xcodegen generate
-
-      - name: Write App Store Connect API key
-        env:
-          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
-        run: |
-          mkdir -p ~/private_keys
-          echo "$APPSTORE_PRIVATE_KEY" > ~/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8
 
       # The Apple Distribution certificate's private key only ever existed
       # in the Mac's local Keychain where it was generated (private keys
       # aren't something Apple's servers hand back) — this runner is a
       # fresh machine every time, so the cert has to be imported into a
-      # throwaway keychain here before every Archive. Standard pattern,
-      # see GitHub's own docs: "Installing an Apple certificate on macOS
+      # throwaway keychain here before every build. Standard pattern, see
+      # GitHub's own docs: "Installing an Apple certificate on macOS
       # runners for Xcode development."
       - name: Import signing certificate
         env:
@@ -68,85 +70,12 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
+          security default-keychain -s "$KEYCHAIN_PATH"
 
-          # Belt-and-suspenders: codesign during Archive respects the
-          # keychain search list above, but exportArchive's distribution
-          # method resolution (IDEDistributionMethodManager) has been
-          # reported to only look at the default login keychain — import
-          # there too rather than relying on the search list alone.
-          security import "$CERT_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k ~/Library/Keychains/login.keychain-db
-          security set-key-partition-list -S apple-tool:,apple: -k "" ~/Library/Keychains/login.keychain-db 2>/dev/null || true
-
-      - name: Archive
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcodebuild archive \
-            -project WatchVoiceIntake.xcodeproj \
-            -scheme WatchVoiceIntake \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/WatchVoiceIntake.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSURE_ID }} \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES \
-            DEVELOPMENT_TEAM=$APPLE_TEAM_ID
-
-      - name: Write export options
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          cat > build/ExportOptions.plist << PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>$APPLE_TEAM_ID</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>com.shuyinlab.watchvoiceintake</key>
-              <string>WatchVoiceIntake AppStore</string>
-              <key>com.shuyinlab.watchvoiceintake.watchkitapp</key>
-              <string>WatchVoiceIntakeWatch AppStore</string>
-            </dict>
-          </dict>
-          </plist>
-          PLIST
-
-      - name: Debug — dump valid exportOptionsPlist method values
-        run: |
-          xcodebuild -help 2>&1 | grep -B2 -A25 "exportOptionsPlist" || true
-          echo "--- archive Info.plist ---"
-          plutil -p build/WatchVoiceIntake.xcarchive/Info.plist || true
-          echo "--- ExportOptions.plist as written ---"
-          plutil -p build/ExportOptions.plist || true
-
-      - name: Export IPA
-        run: |
-          xcodebuild -exportArchive \
-            -archivePath build/WatchVoiceIntake.xcarchive \
-            -exportOptionsPlist build/ExportOptions.plist \
-            -exportPath build/export \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSURE_ID }}
-
-      - name: Upload to TestFlight
+      - name: Build and upload to TestFlight
         env:
           APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
           APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSURE_ID }}
-        run: |
-          xcrun altool --upload-app \
-            -f build/export/WatchVoiceIntake.ipa \
-            -t ios \
-            --apiKey "$APPSTORE_KEY_ID" \
-            --apiIssuer "$APPSTORE_ISSUER_ID"
+          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: fastlane release
