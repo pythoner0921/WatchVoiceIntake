@@ -83,7 +83,11 @@
 4. **核心问题（未解决）**：`xcodebuild archive` 报错 "Your team has no devices from which to generate a provisioning profile"，本质是 Xcode 自动签名在执行 Archive 动作时，即便最终目标是 App Store 分发，内部依然会先尝试生成一个"开发用"签名产物作为中间步骤，而**开发类描述文件强制要求账号里至少注册过一台设备**——全新账号一台设备都没注册过，卡死在这一步
    - 试过 `CODE_SIGN_IDENTITY="Apple Distribution"` 强制指定发布签名身份 → 报错变成"自动签名判定为开发签名，但你又手动指定了发布签名身份，两者冲突"，说明这个方向是错的，回退了
    - 试过把 API Key 角色从 App Manager 换成 Admin → 没有解决这个具体错误（但 Admin 权限本身是必须的，证书管理类操作 App Manager 角色确实没权限，这个改动保留）
-   - 查资料确认：这是社区广泛记录的已知限制——**全新团队从未有过任何证书时，纯命令行 + API Key 的自动签名机制无法可靠地"平地起高楼"创建第一张证书**，标准解法是先用 Xcode 图形界面登录账号、手动触发一次证书生成（这一步走的是 Xcode 自己更完整的账号管理流程，不是纯 CLI），之后自动化签名才能可靠接手
-   - **下一步待执行**：在张梦的 Mac 上打开 Xcode → Settings → Accounts → 登录用户的 Apple Developer 账号 → 选中 Team → Manage Certificates → "+" → Apple Distribution，生成一次证书。做完后重新触发 `release.yml`
+   - 用 Xcode GUI 登录账号、手动生成了一张 Apple Distribution 证书 → **完全没变化，报错一字不差**，说明"缺证书"从来不是真正的瓶颈，这个方向的判断也是错的
+   - 查了 XcodeGen 生成的 `.xcscheme` 确认 Archive 动作本来就正确指向 Release 配置——不是配置问题
+   - **最终判断（已修复，待验证）**：`-allowProvisioningUpdates` + `CODE_SIGN_STYLE=Automatic` 这套纯命令行自动签名，对"全新账号、无状态 CI 环境"这个组合本身就不可靠，不管账号里有没有证书都一样卡——这是业界文档记录的已知限制，不是我们能通过调参数解决的。**改用手动签名**：在 Developer Portal 手动创建两个 App Store 类型描述文件（`WatchVoiceIntake AppStore` / `WatchVoiceIntakeWatch AppStore`），`project.yml` 里每个 target 显式指定 `CODE_SIGN_IDENTITY: "Apple Distribution"` + `PROVISIONING_PROFILE_SPECIFIER`，`release.yml` 不再覆盖 `CODE_SIGN_STYLE`（让 project.yml 的 `Manual` 默认值生效），只覆盖 `CODE_SIGNING_ALLOWED/REQUIRED=YES`。`-allowProvisioningUpdates` 保留，用来下载（不是创建）已存在的具名描述文件，这部分是文档确认可靠的操作
+   - commit `e020911`，等下一次 `release.yml` 跑完验证
 
-**给以后的教训（用户明确要求记住）**：这次反复失败的根本原因是**没有先调研 Apple 官方/社区关于"全新账号 + CI 纯命令行签名"的标准流程，就直接凭经验试**，浪费了很多轮。以后遇到"看起来是常见操作但反复报错"的情况，先搜索确认业界标准做法，再动手改，不要每次报错都靠猜测下一个修复点。
+**给以后的教训（用户明确要求记住）**：
+1. 这次反复失败的根本原因是**没有先调研 Apple 官方/社区关于"全新账号 + CI 纯命令行签名"的标准流程，就直接凭经验试**，浪费了很多轮。以后遇到"看起来是常见操作但反复报错"的情况，先搜索确认业界标准做法，再动手改，不要每次报错都靠猜测下一个修复点
+2. "自动签名"（`CODE_SIGN_STYLE=Automatic` + `-allowProvisioningUpdates`）在真正的无人值守 CI 环境里天生不如"手动签名 + 预先创建好的具名描述文件"可靠——这不是这个项目专属的坑，以后任何新的 iOS/watchOS 项目要接 CI 自动发布，直接从手动签名开始做，不要先尝试自动签名再踩坑
