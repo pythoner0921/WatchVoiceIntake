@@ -76,6 +76,22 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+          # Without the WWDR intermediate + Apple Root CA in the chain, the
+          # leaf "Apple Distribution" cert shows as untrusted (confirmed via
+          # Keychain Access on the Mac it was generated on — same cert, same
+          # missing-chain symptom) — codesign can still succeed since it
+          # only needs the private key match, but exportArchive's stricter
+          # trust validation (IDEDistributionMethodManager) fails on it,
+          # which lines up with the "Unknown Distribution Error" every
+          # attempt has hit regardless of tool/Xcode version/export method.
+          curl -sSf -o "$RUNNER_TEMP/AppleWWDRCAG3.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          curl -sSf -o "$RUNNER_TEMP/AppleWWDRCAG4.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer
+          curl -sSf -o "$RUNNER_TEMP/AppleWWDRCAG6.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG6.cer
+          curl -sSf -o "$RUNNER_TEMP/AppleRootCA.cer" https://www.apple.com/appleca/AppleIncRootCertificate.cer
+          for f in AppleWWDRCAG3 AppleWWDRCAG4 AppleWWDRCAG6 AppleRootCA; do
+            security import "$RUNNER_TEMP/$f.cer" -k "$KEYCHAIN_PATH" -A || true
+          done
+
           security import "$CERT_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
