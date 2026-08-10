@@ -5,8 +5,14 @@
 ## 当前状态（最后更新：2026-08-10）
 
 - 全部功能代码（Watch 分段录音、iPhone 段落合并+上传队列、服务器转写+AI整理+待取队列、客户端自动合并笔记）已写完、CI 编译验证通过、已推送 GitHub
-- **卡在 TestFlight 首次发布**：手动签名(证书+描述文件+私钥导入 Keychain)全部确认配置正确、Archive 也确认签名成功，但 `xcodebuild -exportArchive` 依然稳定复现 "Unknown Distribution Error"，换了多种 method 值、诊断了 archive 内部 Info.plist 都没解决——判断是这个 Xcode 16.4 CLI 路径本身的未文档化怪癖，不是我们配置错。**已改用 fastlane**（`fastlane/Fastfile`，`build_app` + `upload_to_testflight`）替代手写 xcodebuild 命令，这是业界标准工具，专门吸收这类逐版本的签名/导出坑
-- 下一步：等这次用 fastlane 触发的 `release.yml` 跑完看结果
+- **卡在 TestFlight 首次发布**：`xcodebuild -exportArchive` 稳定复现 "Unknown Distribution Error"，已经系统性排除了下面这些变量，全部验证过不是原因（见下方"release.yml 反复失败排查"完整记录）：
+  - Secret 名字/值、手动签名配置（证书+描述文件+私钥）、Archive 本身是否正确签名
+  - `method` 值(`app-store` / `app-store-connect` 都试过)
+  - 工具选择（原生 `xcodebuild` vs `fastlane`，结果完全一样）
+  - Xcode 版本（16.4 vs 这台 runner 上最新的 26.3，结果完全一样）
+  - 证书信任链（发现并修复了 WWDR 中间证书缺失的问题，但补上后报错依然不变）
+  - **当前判断**：账号是当天才批下来的，Apple 内部多套系统之间的权限同步存在已知延迟（Developer Portal 显示"已通过"不代表所有后端服务都同步完），"能否导出 App Store 分发包"这个判断很可能依赖还没同步完的那套系统，纯粹是时间问题，技术上暂时无法再推进
+- 下一步：**等几小时到一天后再重新触发 `release.yml`**，不需要改任何配置，直接 `gh workflow run release.yml --repo pythoner0921/WatchVoiceIntake`；如果那时候还失败，再重新诊断（不要一上来又走一遍已经排除过的路）
 
 ---
 
@@ -88,6 +94,19 @@
    - **最终判断（已修复，待验证）**：`-allowProvisioningUpdates` + `CODE_SIGN_STYLE=Automatic` 这套纯命令行自动签名，对"全新账号、无状态 CI 环境"这个组合本身就不可靠，不管账号里有没有证书都一样卡——这是业界文档记录的已知限制，不是我们能通过调参数解决的。**改用手动签名**：在 Developer Portal 手动创建两个 App Store 类型描述文件（`WatchVoiceIntake AppStore` / `WatchVoiceIntakeWatch AppStore`），`project.yml` 里每个 target 显式指定 `CODE_SIGN_IDENTITY: "Apple Distribution"` + `PROVISIONING_PROFILE_SPECIFIER`，`release.yml` 不再覆盖 `CODE_SIGN_STYLE`（让 project.yml 的 `Manual` 默认值生效），只覆盖 `CODE_SIGNING_ALLOWED/REQUIRED=YES`。`-allowProvisioningUpdates` 保留，用来下载（不是创建）已存在的具名描述文件，这部分是文档确认可靠的操作
    - commit `e020911`，等下一次 `release.yml` 跑完验证
 
+5. **手动签名切换后，Archive 真正成功了**（commit `e020911` 验证通过）——CI 日志确认两个 target 都显示 `Signing Identity: "Apple Distribution: Zhaozhen Tong"` + 正确的描述文件名，这部分问题彻底解决了
+6. **但 Export 阶段卡在新问题**：`xcodebuild -exportArchive` 报 "Unknown Distribution Error"（`IDEDistributionMethodManagerErrorDomain Code=2`），紧跟着 "exportOptionsPlist error for key method expected one {} but found app-store"。排查过程（按顺序）：
+   - 一开始以为是 `ExportOptions.plist` 的 `signingStyle` 还写着 `automatic`(跟手动签名的实际情况冲突) → 改成 `manual` + 显式 `provisioningProfiles` 映射 → 没解决，报错不变
+   - 怀疑 `method` 值本身在 Xcode 16 上从 `app-store` 改名成了 `app-store-connect`（查资料确认过这个改名是真的） → 两个值都试了，报错一模一样 → 说明这次不是这个原因
+   - 诊断了 archive 内部 `Info.plist`，发现完全没有 `ApplicationProperties`(正常应该有签名身份/Team/Bundle ID) → 怀疑是主 App target 缺了 `SKIP_INSTALL: NO`(Watch target 之前补过，主 target 一直没补) → 补上后 archive 的 Info.plist **依然没有 ApplicationProperties**，这个方向也是错的（但 `SKIP_INSTALL: NO` 这个改动本身没坏处，保留了）
+   - **换用 fastlane**（`build_app` + `upload_to_testflight`）替代手写 `xcodebuild archive`/`exportArchive`/`altool` —— fastlane 内部走的还是同一套 `xcodebuild` 调用，**报错完全相同**，证明问题不在"我们手写脚本哪里写错了"，是更底层的东西
+   - 查到 macOS-15 runner 默认的 Xcode 16.4 在 App Store 提交上有已知问题（`actions/runner-images#14165`），怀疑是 Xcode 版本过旧 → 改成自动选这台 runner 上实际装着的最新 Xcode（26.3）→ **报错依然一模一样**，连 Xcode 版本也排除了
+   - 诊断"下载到的描述文件实际内容"，发现两个常见缓存目录（`~/Library/MobileDevice/Provisioning Profiles/` 和 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`）都是空的——`-allowProvisioningUpdates` 用 API Key 认证时不会把描述文件持久化到磁盘，每次 xcodebuild 调用现拉现用，这条诊断路径走不通
+   - **张梦截图里发现关键证据**：她本地 Keychain Access 里那张 Apple Distribution 证书标红"证书不受信任"——**缺 Apple 的 WWDR 中间证书**，导致证书链不完整。这解释了为什么 `codesign`（只要私钥匹配就行）能成功，但 `exportArchive` 的信任校验（`IDEDistributionMethodManager`）会挂——补上 WWDR + Root CA 证书 → **报错依然完全不变**，这个方向也没能解决问题，但确实是一个真实存在、已经修复的独立问题（保留了这个修复）
+   - **当前排查到的最后结论**：账号是当天才注册批准的，怀疑是 Apple 后端多套系统之间的权限同步延迟（Developer Portal 显示"已通过"≠所有下游服务都同步完），纯粹是时间问题，暂时没有更多技术手段能验证或加速——**下一步就是等几小时到一天后直接重新触发，不用再改配置**
+
 **给以后的教训（用户明确要求记住）**：
 1. 这次反复失败的根本原因是**没有先调研 Apple 官方/社区关于"全新账号 + CI 纯命令行签名"的标准流程，就直接凭经验试**，浪费了很多轮。以后遇到"看起来是常见操作但反复报错"的情况，先搜索确认业界标准做法，再动手改，不要每次报错都靠猜测下一个修复点
 2. "自动签名"（`CODE_SIGN_STYLE=Automatic` + `-allowProvisioningUpdates`）在真正的无人值守 CI 环境里天生不如"手动签名 + 预先创建好的具名描述文件"可靠——这不是这个项目专属的坑，以后任何新的 iOS/watchOS 项目要接 CI 自动发布，直接从手动签名开始做，不要先尝试自动签名再踩坑
+3. **换工具(xcodebuild→fastlane)、换版本(Xcode 16.4→26.3) 报错完全不变，是很强的信号**——说明问题不在"这个特定命令怎么写"，而在更上层(账号状态/服务端权限)，这时候应该停止在命令行参数层面继续试，往账号状态方向查
+4. **全新 Apple Developer 账号当天批准后，不要假设所有权限立刻生效**——Developer Portal 网页显示"已通过"只代表最基础的账号状态，App Store 分发相关的权限可能有独立的、更慢的后端同步延迟，遇到怎么调都没用的诡异错误时，这是需要考虑的候选原因，可以先等一等再排查，不用一直烧 CI 构建次数
