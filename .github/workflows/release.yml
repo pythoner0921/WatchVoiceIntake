@@ -69,6 +69,14 @@ jobs:
 
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
 
+          # Belt-and-suspenders: codesign during Archive respects the
+          # keychain search list above, but exportArchive's distribution
+          # method resolution (IDEDistributionMethodManager) has been
+          # reported to only look at the default login keychain — import
+          # there too rather than relying on the search list alone.
+          security import "$CERT_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k ~/Library/Keychains/login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -k "" ~/Library/Keychains/login.keychain-db 2>/dev/null || true
+
       - name: Archive
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
