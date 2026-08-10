@@ -35,6 +35,14 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.shuyinlab.watchvoiceintake
       TARGETED_DEVICE_FAMILY: "1"
+      # Only takes effect when release.yml overrides CODE_SIGNING_ALLOWED to
+      # YES — build.yml's unsigned compile check forces it back to NO, so
+      # these are inert there. Named to match the App Store profile created
+      # manually in the Developer Portal (see PROJECT_LOG.md) — automatic
+      # signing proved unreliable in CI for a brand-new team, see the
+      # signing pitfalls section there before changing this.
+      CODE_SIGN_IDENTITY: "Apple Distribution"
+      PROVISIONING_PROFILE_SPECIFIER: "WatchVoiceIntake AppStore"
     dependencies:
       - target: WatchVoiceIntakeWatch
         embed: true
@@ -62,6 +70,9 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: com.shuyinlab.watchvoiceintake.watchkitapp
       SKIP_INSTALL: NO
       TARGETED_DEVICE_FAMILY: "4"
+      # See the matching comment on the WatchVoiceIntake target above.
+      CODE_SIGN_IDENTITY: "Apple Distribution"
+      PROVISIONING_PROFILE_SPECIFIER: "WatchVoiceIntakeWatch AppStore"
 
 schemes:
   WatchVoiceIntake:
