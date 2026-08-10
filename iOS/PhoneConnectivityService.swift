@@ -17,11 +17,10 @@ import AVFoundation
 // expect, merges them here on iOS (where AVAssetExportSession works)
 // into the single file that actually gets uploaded.
 //
-// Phase 1-3 scope: receive, group, merge, count. Actually enqueuing +
-// uploading the merged file to the AI Intake server is Phase 4
-// (UploadQueueManager, not built yet) — kept separate so this class's
-// only job is "turn Watch segments into one finished recording," not
-// also know about HTTP/retry logic.
+// Once merged, the file is handed to UploadQueueManager — a persistent,
+// retrying queue (see its own comment for why) — not uploaded directly
+// from here, so a merge that happens while the phone has no network still
+// eventually reaches the server instead of being lost.
 final class PhoneConnectivityService: NSObject, ObservableObject, WCSessionDelegate {
     @Published var pendingCount = 0
     @Published var mergedCount = 0
@@ -97,10 +96,7 @@ final class PhoneConnectivityService: NSObject, ObservableObject, WCSessionDeleg
                 }
                 print("[PhoneConnectivityService] merged \(orderedURLs.count) segment(s) into \(merged.lastPathComponent)")
                 await MainActor.run { self.mergedCount += 1 }
-                // Phase 4 replaces this with UploadQueueManager.enqueue(file: merged) —
-                // moving the merged recording into the persistent pending-upload
-                // queue (see the feasibility report's K section) instead of just
-                // leaving it on disk.
+                UploadQueueManager.shared.enqueue(file: merged, recordingId: sessionId)
             }
         }
     }
