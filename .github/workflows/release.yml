@@ -56,6 +56,8 @@ jobs:
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSURE_ID }} \
             CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES \
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID
 
       - name: Write export options
