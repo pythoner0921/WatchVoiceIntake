@@ -5,8 +5,8 @@
 ## 当前状态（最后更新：2026-08-10）
 
 - 全部功能代码（Watch 分段录音、iPhone 段落合并+上传队列、服务器转写+AI整理+待取队列、客户端自动合并笔记）已写完、CI 编译验证通过、已推送 GitHub
-- **卡在 TestFlight 首次发布**：`release.yml` 反复失败，根因见下方"踩过的坑"——当前结论是全新 Apple Developer 账号从未有过任何签名证书时，纯命令行自动签名无法可靠创建第一张 Distribution 证书，下一步要在 Xcode 图形界面里做一次性引导（登录账号 + 手动生成一次 Distribution 证书）
-- 下一步：在张梦那台 Mac 上用 Xcode GUI 完成一次性证书引导，然后重新触发 `release.yml`
+- **卡在 TestFlight 首次发布**：手动签名(证书+描述文件+私钥导入 Keychain)全部确认配置正确、Archive 也确认签名成功，但 `xcodebuild -exportArchive` 依然稳定复现 "Unknown Distribution Error"，换了多种 method 值、诊断了 archive 内部 Info.plist 都没解决——判断是这个 Xcode 16.4 CLI 路径本身的未文档化怪癖，不是我们配置错。**已改用 fastlane**（`fastlane/Fastfile`，`build_app` + `upload_to_testflight`）替代手写 xcodebuild 命令，这是业界标准工具，专门吸收这类逐版本的签名/导出坑
+- 下一步：等这次用 fastlane 触发的 `release.yml` 跑完看结果
 
 ---
 
