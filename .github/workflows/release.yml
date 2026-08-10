@@ -6,7 +6,9 @@ name: Release (TestFlight)
 # testing, not on every push.
 #
 # Requires these repo secrets (Settings > Secrets and variables > Actions):
-#   APPSTORE_ISSUER_ID       - App Store Connect API key Issuer ID
+#   APPSTORE_ISSURE_ID       - App Store Connect API key Issuer ID (name has
+#                              a typo from when it was first created — kept
+#                              as-is rather than making the user redo it)
 #   APPSTORE_KEY_ID          - App Store Connect API key Key ID
 #   APPSTORE_PRIVATE_KEY     - contents of the downloaded .p8 API key file
 #   APPLE_TEAM_ID            - Apple Developer Team ID (Membership page)
@@ -52,7 +54,7 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSURE_ID }} \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID
 
@@ -84,12 +86,12 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
+            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSURE_ID }}
 
       - name: Upload to TestFlight
         env:
           APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
-          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSURE_ID }}
         run: |
           xcrun altool --upload-app \
             -f build/export/WatchVoiceIntake.ipa \
