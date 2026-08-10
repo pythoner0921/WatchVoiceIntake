@@ -101,7 +101,14 @@ jobs:
             <key>teamID</key>
             <string>$APPLE_TEAM_ID</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.shuyinlab.watchvoiceintake</key>
+              <string>WatchVoiceIntake AppStore</string>
+              <key>com.shuyinlab.watchvoiceintake.watchkitapp</key>
+              <string>WatchVoiceIntakeWatch AppStore</string>
+            </dict>
           </dict>
           </plist>
           PLIST
