@@ -35,6 +35,13 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.shuyinlab.watchvoiceintake
       TARGETED_DEVICE_FAMILY: "1"
+      # Without this, the archived .xcarchive's Info.plist came out missing
+      # ApplicationProperties entirely (no SigningIdentity/Team/bundle info)
+      # even though codesign itself reported success per-target — Export
+      # then can't determine any valid distribution method for the archive
+      # at all. The Watch target already had this; the main app target was
+      # relying on Xcode's default, which isn't reliably NO in this setup.
+      SKIP_INSTALL: NO
       # Only takes effect when release.yml overrides CODE_SIGNING_ALLOWED to
       # YES — build.yml's unsigned compile check forces it back to NO, so
       # these are inert there. Named to match the App Store profile created
