@@ -11,8 +11,19 @@
   - 工具选择（原生 `xcodebuild` vs `fastlane`，结果完全一样）
   - Xcode 版本（16.4 vs 这台 runner 上最新的 26.3，结果完全一样）
   - 证书信任链（发现并修复了 WWDR 中间证书缺失的问题，但补上后报错依然不变）
-  - **当前判断**：账号是当天才批下来的，Apple 内部多套系统之间的权限同步存在已知延迟（Developer Portal 显示"已通过"不代表所有后端服务都同步完），"能否导出 App Store 分发包"这个判断很可能依赖还没同步完的那套系统，纯粹是时间问题，技术上暂时无法再推进
-- 下一步：**等几小时到一天后再重新触发 `release.yml`**，不需要改任何配置，直接 `gh workflow run release.yml --repo pythoner0921/WatchVoiceIntake`；如果那时候还失败，再重新诊断（不要一上来又走一遍已经排除过的路）
+  - 用 App Store Connect API（自己写脚本签 JWT 查的）确认了两个描述文件 ACTIVE、证书 DISTRIBUTION 类型有效、Bundle ID/App 记录都对
+  - 用 openssl 把证书从描述文件里提出来，逐字节比对 WWDR G3 中间证书的 Subject/Authority Key Identifier，**密码学层面证书链完全正确**——排除了证书链问题
+  - **当前判断**：账号是当天才批下来的，Apple 内部多套系统之间的权限同步存在已知延迟（Developer Portal 显示"已通过"不代表所有后端服务都同步完），"能否导出 App Store 分发包"这个判断很可能依赖还没同步完的那套系统，纯粹是时间问题，技术上已经排查到头，暂时无法再推进
+
+### ⏳ 倒计时状态（2026-08-10 更新，如果看到这条说明还在等）
+
+- **上次实际触发 `release.yml` 的时间**：`2026-08-10T04:57 UTC`（失败，同样的 "Unknown Distribution Error"）
+- **计划**：等到 `2026-08-10T07:57 UTC` 左右（触发后约 3 小时）再重试一次，纯重试不改配置
+- **如果这条会话已经中断/关闭**，新会话里直接说"检查现在几点了，够3小时就重试"即可，我会：
+  1. `date -u +%Y-%m-%dT%H:%M:%SZ` 看现在几点
+  2. 跟 `04:57 UTC` 比较，够 3 小时就跑 `gh workflow run release.yml --repo pythoner0921/WatchVoiceIntake` 然后 `gh run watch` 跟到完成
+  3. 不够就告诉你还要等多久，不用重新触发
+- **如果重试后还是同样报错**：技术排查已经做到头（见上面完整清单），下一步应该是联系 Apple 开发者支持（developer.apple.com/contact，Technical Support），把这次排查过程发给他们，而不是继续在本地/CI 层面猜
 
 ---
 
