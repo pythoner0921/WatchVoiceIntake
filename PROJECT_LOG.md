@@ -5,15 +5,13 @@
 ## 当前状态（最后更新：2026-08-10）
 
 - 全部功能代码（Watch 分段录音、iPhone 段落合并+上传队列、服务器转写+AI整理+待取队列、客户端自动合并笔记）已写完、CI 编译验证通过、已推送 GitHub
-- **卡在 TestFlight 首次发布**：`xcodebuild -exportArchive` 稳定复现 "Unknown Distribution Error"，已经系统性排除了下面这些变量，全部验证过不是原因（见下方"release.yml 反复失败排查"完整记录）：
-  - Secret 名字/值、手动签名配置（证书+描述文件+私钥）、Archive 本身是否正确签名
-  - `method` 值(`app-store` / `app-store-connect` 都试过)
-  - 工具选择（原生 `xcodebuild` vs `fastlane`，结果完全一样）
-  - Xcode 版本（16.4 vs 这台 runner 上最新的 26.3，结果完全一样）
-  - 证书信任链（发现并修复了 WWDR 中间证书缺失的问题，但补上后报错依然不变）
-  - 用 App Store Connect API（自己写脚本签 JWT 查的）确认了两个描述文件 ACTIVE、证书 DISTRIBUTION 类型有效、Bundle ID/App 记录都对
-  - 用 openssl 把证书从描述文件里提出来，逐字节比对 WWDR G3 中间证书的 Subject/Authority Key Identifier，**密码学层面证书链完全正确**——排除了证书链问题
-  - **当前判断**：账号是当天才批下来的，Apple 内部多套系统之间的权限同步存在已知延迟（Developer Portal 显示"已通过"不代表所有后端服务都同步完），"能否导出 App Store 分发包"这个判断很可能依赖还没同步完的那套系统，纯粹是时间问题，技术上已经排查到头，暂时无法再推进
+- **卡在 TestFlight 首次发布，技术排查已到头，下一步是联系 Apple 开发者支持**（报告已写好：`APPLE_SUPPORT_REPORT.md`）
+- **最终定位结论**：archive 的 `IDEDistribution.verbose.log` 显示——**所有跟账号相关的分发方式(App Store/AdHoc/Enterprise/Development，四个平台全部)无一例外被拒绝**，只接受两个不涉及账号签名的本地选项(`SaveBuiltProducts`/`ExportArchive`)。这个模式在三套完全独立的环境里**一模一样地复现**：
+  1. GitHub Actions 原生 `xcodebuild`（手动签名，Xcode 16.4 和 26.3 都试过）
+  2. GitHub Actions `fastlane`
+  3. **Xcode Cloud（Apple 官方自己的云构建服务，云端托管签名，完全不涉及我们自己创建的证书/描述文件）**——这一条是最强证据，Apple 自己的服务器都过不去，不可能是我们 CI 配置的问题
+- 已排除的变量完整清单：Secret 名字/值、手动签名配置(证书+描述文件+私钥)、Archive 是否正确签名、`method` 值(`app-store`/`app-store-connect`)、工具选择、Xcode 版本、证书信任链(WWDR，用 openssl 逐字节验证过密钥指纹完全匹配)、API Key 角色、`SKIP_INSTALL`、版本号字段(`CFBundleShortVersionString`/`CFBundleVersion` 确认存在有效)、等待3小时后重试(无变化)
+- **结论**：这是 Apple 后端对这个新账号的分发权限判定问题，只有 Apple 自己能查，技术上我们这边已经做到能做的极限
 
 ### ⏳ 倒计时状态（2026-08-10 更新，如果看到这条说明还在等）
 
