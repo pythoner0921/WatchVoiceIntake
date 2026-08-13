@@ -6,12 +6,12 @@
 
 - ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目，但下次会话可如实告知用户 Plan B 现状供其判断优先级。
 - ✅ 全部功能代码写完，CI 编译通过，已推送 GitHub
-- ✅ 根因定位：Apple 账号分发权限被拒绝（**注意：这是 CI 分发/签名管道问题，从未进入过 App Review 队列**），三套独立环境（xcodebuild/fastlane/Xcode Cloud）一致复现，技术侧已排查到极限
-- ✅ 已提交 Apple 正式技术支持工单（案例编号 `20000133548930`），收到过一次模板确认信并已中文回复要求核实账号权限
+- ✅ 根因定位：Apple 账号分发权限被拒绝（**注意：这是 CI 分发/签名管道问题，从未进入过 App Review 队列**），三套独立环境（xcodebuild/fastlane/Xcode Cloud）一致复现，"免费/付费账户 Team 混淆"这个方向已实测排除，技术侧已排查到极限
 - ✅ 已关闭 Xcode Cloud 自动构建触发，避免等待期间刷屏失败邮件
-- ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断中的 1 项（账号删除入口）已写代码修完，另 1 项（审核测试账号）确认为纯后台操作，代码帮不上忙
-- ⚠️ 账号删除功能代码已写完但**尚未编译验证**（本机 Windows 无法本地跑 Xcode，需要下次联调远程 Mac / CI 时验证）
-- 下一步：① 纯等待 Apple 邮件回复解决分发权限问题；② 用户去 App Store Connect 后台填审核测试账号（checklist 第1项已给好操作步骤+建议文案）；③ 下次有远程 Mac / CI 可用时验证新增的删除账号流程编译+跑通。下次会话打开先问用户"Apple 邮件回了没有"。
+- ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断中的 1 项（账号删除入口）已写代码修完并编译验证通过
+- ✅ **审核测试账号已建好**：research-os 全新空账号 `shuyin.unlimited+applereview@gmail.com`（user_id 37），手动开了永久 Pro（`current_period_end` 2027-08-13，纯本地标记不涉及真实订阅）防止审核期间试用期到期导致功能失效。密码只在对话里给了用户，**不写进本文件**（会被推上 GitHub）。checklist 第1项（审核测试账号）已完成，用户可直接把这组邮箱/密码填进 App Store Connect → App Review Information → Sign-In Information
+- ✅ **用户已发出第二次回复邮件**（内容见 `APPLE_SUPPORT_REPLY_2026-08-13.md`），案例编号 `20000133548930`，当前**纯等待 Apple 下一次回复**
+- 下一步：纯等 Apple 邮件回复。下次会话打开先问用户"Apple 邮件回了没有"——回了要留意这次回复解决的只是"CI 能不能打包"，后面还有上传 TestFlight→提交 App Review→正式上线三步，每步都要手动往前推，不会自动接力。
 
 ---
 
@@ -21,6 +21,8 @@
 |---|---|
 | GitHub 仓库 | https://github.com/pythoner0921/WatchVoiceIntake |
 | 服务器 API | `https://researchos.shuyinlab.com`（同一个 Research OS 主项目，见 `server/watch.js`） |
+| Apple Developer 付费 Team ID | `28UXGDR5KC`（Apple Developer Program，个人身份，2027-08-11 续订，2026-08-13 已核实并确认写入 `APPLE_TEAM_ID` secret） |
+| Apple 工单 | 案例编号 `20000133548930`，账号 `2415476719@qq.com`，最新一次用户回复见 `APPLE_SUPPORT_REPLY_2026-08-13.md` |
 | Apple Developer Team ID / Issuer ID / API Key | GitHub 仓库 Settings → Secrets → Actions，名字见下表（**不要把 `.p8` 内容贴进对话或提交到仓库**） |
 | 远程开发用 Mac | 张梦的 MacBook Air，通过 Tailscale(100.100.154.55) SSH 访问，用户名 `zhaomeng`；SSH 私钥在本机 `D:\partition3\Services\ssh_keys\id_ed25519_zhaomeng_mac` |
 | GitHub push 权限 | 本机 `gh auth status` 已登录 `pythoner0921`，走 `gh`/git https，Mac 上没配过、不能直接 push |
@@ -36,7 +38,39 @@
 
 ---
 
-## 时间线
+### 2026-08-13（续四）— 建好 App Review 用的测试账号
+
+- Apple 回了邮件，用户进入下一步审核准备，需要一个"空账号"给 Apple 审核员登录用——不是 Apple ID，是 App 自己连的 research-os 邮箱密码系统（`AuthSession.swift`/`LoginView.swift`，走自建服务器，不是第三方 OAuth）
+- 用 research-os 自己的 `/api/auth/register` 注册了一个全新账号：`shuyin.unlimited+applereview@gmail.com`（Gmail `+` 别名，邮件会进用户自己收件箱，但账号本身在系统里完全独立、无任何笔记数据），user_id 37
+- 新注册账号默认只有 7 天试用期，过期后语音上传/AI 整理等核心功能会被锁——审核有时会拖过 7 天，锁掉功能可能被误判成 App 故障直接拒审。跟用户确认后，直接给这个账号写了一条永久 Pro 订阅记录（`current_period_end` 2027-08-13，`stripe_subscription_id: 'apple-review-test-account'`，纯本地标记，不走 Stripe、不产生费用）
+- 密码只在对话里给了用户，**没有写进这个文件**——这个仓库要推到 GitHub，写进去等于把密码公开
+- **App Review Information → Sign-In Information 现在可以直接用这组邮箱+密码填了**，checklist 第1项完成
+
+### 2026-08-13（续）— Apple 支持首次实质回复（免费/付费账户混淆假说），实测排除
+
+- Apple 技术支持（Terry）就案例 `20000133548930` 给出第一个具体、可操作的排查方向：账号
+  `2415476719@qq.com` 可能同时关联免费开发者账户和付费 Apple Developer Program 账户，工具可能
+  误用了免费身份，并给了一个 Apple 官方论坛的类似案例（`forums/thread/772395`，症状是 Xcode
+  用了 "Personal Team" 而非付费 Team）
+- 用户提供付费 Team 会员资格截图核实：Team ID `28UXGDR5KC`，Apple Developer Program，个人身份，
+  2027-08-11 续订——确认这个账号确实是合法的付费开发者账户
+- 排查 CI 侧代码，确认 `fastlane/Fastfile:23` 的 `export_team_id: ENV["APPLE_TEAM_ID"]` 是
+  exportArchive 阶段唯一决定"问 Apple 服务器查哪个 Team 的分发资格"的参数，理论上是这条假说
+  在 CI 场景下最直接的验证点
+- **实测**：用 `gh secret set` 把 `APPLE_TEAM_ID` 显式改成确认过的付费 Team ID `28UXGDR5KC`，
+  手动触发 `release.yml`（`workflow_dispatch`，不需要远程 Mac，GitHub 云端 macOS runner 跑的）
+  → **报错逐字不变**：Archive 秒成功，Export 阶段 0.1 秒内立刻报同一个
+  `IDEDistributionMethodManagerErrorDomain Code=2 "Unknown Distribution Error"`，连时间点都几乎
+  一样。**这个假说被本次实测排除**——不是 Team ID 混淆的问题（CI 用 App Store Connect API Key
+  认证，本来就不太可能像 Xcode GUI 那样混淆账号身份，这次验证印证了这一点）
+- 已整理好中文回复邮件草稿 `APPLE_SUPPORT_REPLY_2026-08-13.md`：列出已核实的 Team ID 信息、
+  这次的排除性测试结果、附上完整报错文本，以及此前已经排除过的四个方向（证书/描述文件、Xcode
+  版本、工具选择、Team 混淆），明确要求 Apple 工程师从账号后端权限状态而非客户端配置层面排查——
+  等用户确认后手动发出
+- **给以后的教训**：Apple 支持给的建议即使配了具体案例参考，也可能是根据关键词匹配到的通用模板，
+  不代表已经看过这个案例的具体技术细节——回复时最好带上"我已经验证过你的建议、结果如下"这种具体
+  证据，逼着支持真正往下一层排查，而不是在同一个假说上来回打太极
+
 ### 2026-08-13（续）— 修复账号删除入口硬阻断；澄清 Sign in with Apple 不适用
 
 - 用户确认"只有自己用"跟"Sign in with Apple"是两码事——后者只在提供第三方 OAuth 登录（Google/
