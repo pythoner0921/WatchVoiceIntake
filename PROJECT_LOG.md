@@ -2,27 +2,14 @@
 
 > Apple Watch 语音备忘录，自动转写+AI整理，直接写入 Research OS 的 AI Intake 笔记系统。Watch 只负责录音和可靠提交，不做任何本地转写/总结。
 
-## 当前状态（最后更新：2026-08-10）
+## 当前状态（最后更新：2026-08-13）
 
-- 全部功能代码（Watch 分段录音、iPhone 段落合并+上传队列、服务器转写+AI整理+待取队列、客户端自动合并笔记）已写完、CI 编译验证通过、已推送 GitHub
-- **卡在 TestFlight 首次发布，技术排查已到头，下一步是联系 Apple 开发者支持**（报告已写好：`APPLE_SUPPORT_REPORT.md`）
-- **最终定位结论**：archive 的 `IDEDistribution.verbose.log` 显示——**所有跟账号相关的分发方式(App Store/AdHoc/Enterprise/Development，四个平台全部)无一例外被拒绝**，只接受两个不涉及账号签名的本地选项(`SaveBuiltProducts`/`ExportArchive`)。这个模式在三套完全独立的环境里**一模一样地复现**：
-  1. GitHub Actions 原生 `xcodebuild`（手动签名，Xcode 16.4 和 26.3 都试过）
-  2. GitHub Actions `fastlane`
-  3. **Xcode Cloud（Apple 官方自己的云构建服务，云端托管签名，完全不涉及我们自己创建的证书/描述文件）**——这一条是最强证据，Apple 自己的服务器都过不去，不可能是我们 CI 配置的问题
-- 已排除的变量完整清单：Secret 名字/值、手动签名配置(证书+描述文件+私钥)、Archive 是否正确签名、`method` 值(`app-store`/`app-store-connect`)、工具选择、Xcode 版本、证书信任链(WWDR，用 openssl 逐字节验证过密钥指纹完全匹配)、API Key 角色、`SKIP_INSTALL`、版本号字段(`CFBundleShortVersionString`/`CFBundleVersion` 确认存在有效)、等待3小时后重试(无变化)
-- **结论**：这是 Apple 后端对这个新账号的分发权限判定问题，只有 Apple 自己能查，技术上我们这边已经做到能做的极限
-
-### ⏳ 等待状态（2026-08-11 更新，如果看到这条说明还在等 Apple 回复）
-
-- 3小时后重试(2026-08-10T07:57 UTC)结果依然失败，同样报错——排除了"纯粹同步延迟"这个猜测
-- **已经通过 developer.apple.com/contact → 分发 → TestFlight 提交了正式技术支持工单**，内容见 `APPLE_SUPPORT_REPORT.md`，提交时间 2026-08-10 晚（具体案例 ID 待用户补充——提交后 Apple 网页会显示一个案例 ID，还没记录到这里）
-- **当前动作：纯等待 Apple 邮件回复**，不需要再自己重试构建（2026-08-11 早上查过 Xcode Cloud 自动构建日志，仍是同一个已诊断清楚的问题，没有新信息，不用再看）
-- **下一次会话打开时该做什么**：
-  1. 先问用户 Apple 邮件回了没有
-  2. 如果回了：把邮件内容/建议贴给我，直接按 Apple 给的方案处理
-  3. 如果没回：可以再等，或者去 App Store Connect 网页的工单页面看有没有状态更新（案例 ID 页面通常会显示"处理中"之类状态）
-- **顺带的待办（不紧急，Apple 回复后处理完再考虑）**：用户提到想要一个"发布前自动检查清单"脚本（检查证书/描述文件有效期、证书链、Bundle ID 匹配），减少以后同类问题的排查成本——这个不会解决账号级别的问题，但能防住本地可检测的错误。还没开始做，是个明确提出但未执行的需求。
+- ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目，但下次会话可如实告知用户 Plan B 现状供其判断优先级。
+- ✅ 全部功能代码写完，CI 编译通过，已推送 GitHub
+- ✅ 根因定位：Apple 账号分发权限被拒绝，三套独立环境（xcodebuild/fastlane/Xcode Cloud）一致复现，技术侧已排查到极限
+- ✅ 已提交 Apple 正式技术支持工单（案例编号 `20000133548930`），收到过一次模板确认信并已中文回复要求核实账号权限
+- ✅ 已关闭 Xcode Cloud 自动构建触发，避免等待期间刷屏失败邮件
+- 下一步：纯等待 Apple 邮件回复。下次会话打开先问用户"Apple 邮件回了没有"——回了就按 Apple 方案处理，没回可以再等或去工单页面看状态。不紧急待办：用户想要一个"发布前自动检查清单"脚本，尚未开始。
 
 ---
 
@@ -48,46 +35,18 @@
 ---
 
 ## 时间线
+### 2026-08-11 — Apple 技术支持首次回复（仍是模板回复，非实质技术答复）
 
-### 2026-08-09 — Phase 1：项目搭建 + 云端编译
+- 收到 Apple 开发者支持中文团队（客服 Neil）回复邮件，**内容是通用模板**：确认收到工单、引导去 Apple Developer Forums 自助查找答案、给了案例编号、留了预约电话入口——**没有针对"账号级分发权限被拒绝"这个具体问题给出实质性技术回应**，判断是人工客服打开工单后的第一层标准流程，还没真正进入技术排查
+- **案例编号（务必保留）：`20000133548930`**
+- **已回复**：用中文正文（`APPLE_SUPPORT_REPORT.md` 核心内容改写成口语化中文，说明不是 Forums 可解答的问题，要求技术团队核实账号后端权限状态）回复了该邮件，案例编号 `20000133548930` 保留在邮件线程里。**当前状态：纯等待 Apple 下一次回复**
 
-- 建仓库，XcodeGen + GitHub Actions macOS runner 做免费云端编译验证（不需要本地 Mac）
-- 踩坑：Watch target 用了过时的 `application.watchapp2` 类型（watchOS 7 之前的双 target 打包格式），跟 watchOS 10+ 部署目标搭配导致 XcodeGen 生成重复输出路径，`xcodebuild` 报 "Multiple commands produce"。**修法**：改成 watchOS 9+ 的标准单 target `application` 类型
-- Phase 1 完成：CI 编译通过（未签名）
+### 2026-08-11 — 关掉 Xcode Cloud 自动触发，避免等待期间刷屏失败邮件
 
-### 2026-08-09 — 远程开发环境搭建
-
-- 用户人在日本，Mac 只有一台旧 2014 MacBook Pro（跑不动现代 Xcode），改用女朋友张梦在中国的新 Mac 远程开发
-- 踩坑排查过程（详见对话历史，不赘述）：VNC/屏幕共享黑屏 → 换 AnyDesk 解决远程桌面；SSH 密钥登录配置成功，密钥存在本机 `D:\partition3\Services\ssh_keys\`（不要存在项目仓库或临时 scratchpad 目录，之前一度存错地方）
-- **规则**：本项目所有 SSH 命令行工作交给 Claude 做，图形界面操作（登录 Apple ID、Watch 配对信任、点击物理按钮）需要用户/张梦配合远程桌面完成
-
-### 2026-08-09 — Phase 2/3：本地录音 + 多段录音 + Watch→iPhone 传输
-
-- 基础录音测试通过（模拟器）
-- 产品需求变更：单次录音改成"暂停/继续说/完成"三态，允许分段录音、最后合并成一条笔记再上传（避免半句话就建碎笔记）
-- **重大技术坑**：`AVAssetExportSession`（用于合并多段音频）在 watchOS 上**整体不可用**——所有 `AVAssetExportPreset*` 常量在 SDK 里都标了 `API_UNAVAILABLE(watchos)`，跟 watchOS 部署目标版本无关，watchOS 11 也一样。**解法**：把合并逻辑从 Watch 移到 iPhone（`PhoneConnectivityService`），iOS 端完整支持 `AVAssetExportSession`；Watch 只管录制+发送有序段落（带 `sessionId`/`sequenceIndex`/`segmentCount` 元数据），iPhone 收齐后再合并
-- **模拟器已知限制**：iOS/watchOS 模拟器之间 `WCSession.transferFile`（文件传输）经常静默失败，多次测试证实——这是 Apple 模拟器本身的限制，不是代码问题，**不值得花时间排查**，留到真机测试验证
-
-### 2026-08-09 — Phase 4：服务器端接入 AI Intake
-
-- 研究了 research-os 现有的会议录音异步处理管线（`server/meetings.js`：上传→AssemblyAI转写→AI总结→写入 pending 队列→客户端拉取合并），照这个成熟模式实现 Watch 语音管线，而不是重新发明
-- 新增 `server/watch.js`：`POST /api/watch/voice`——转写(复用 `handleTranscribe` 抽出的 `transcribeAudioBuffer`) → AI整理成笔记(仿照 `handleCasualChatSummarize` 的"永远直接出结果不追问"模式，新建 `organizeWatchTranscript`) → 存入新表 `watch_notes_pending`
-- 新表 `watch_notes_pending`：跟 `evolver_drafts`/`meeting_updates` 一样的"服务器只排队、客户端自己拉取合并进 `ros:memos`"规则，服务器永远不直接写 `ros:memos`
-- `recordingId`（Watch 生成的 UUID）直接做主键，实现幂等——同一段录音重传不会建重复笔记
-- 客户端 `src/pages/Memo.jsx` 新增 `pullWatchNotes()`，App 打开时自动拉取合并，**全程不经过人工确认**（这是产品要求：Watch 笔记要全自动，不像网页版 AI Intake 那样需要检查草稿再点创建）
-
-### 2026-08-09/10 — Phase 4 续：iOS 上传队列 + 登录
-
-- 新增 `iOS/UploadQueueManager.swift`：合并好的录音持久化存到 `Documents/PendingUploads`（不是 tmp，重启不丢），失败自动重试，`recordingId` 做幂等键防重复上传
-- 新增 `iOS/AuthSession.swift`：Keychain 存 JWT（30天有效期，跟服务器 `authRequired` 中间件一致），`iOS/LoginView.swift` 提供登录界面
-- **踩坑（一次真实的疏忽）**：写完 `UploadQueueManager` 后忘了把 `PhoneConnectivityService.swift` 里的占位注释换成真正的 `UploadQueueManager.shared.enqueue(...)` 调用，导致代码"看起来完整"但合并完的录音其实从没进过上传队列。**教训**：改动分布在多个文件时，改完要搜索确认所有引用点都真的接上了，不能只看单个文件编译通过就当作完成
-- **踩坑（Windows/Mac 双边编辑同步问题）**：这个项目同时在张梦的 Mac（跑 SSH 命令做真正的编译验证）和本地 Windows（`D:\partition3\Boring_buss\WatchVoiceIntake`，方便用 `gh` push）各有一份工作副本，多次出现"改了一边忘了同步另一边"、"git commit 作者身份在 Mac 上被自动填成张梦的本地账户"等问题。**教训**：以 Mac 上跑通编译验证的那份为准，push 前用 `git bundle` 把 Mac 的精确历史带到 Windows 来推送，不要凭记忆在两边分别重写同一个改动
-- **踩坑（Shell 转义）**：早期用 SSH 命令套 heredoc 写 Swift 文件时，Swift 代码里的 `$0`（闭包简写参数）被外层 SSH 双引号命令做了 shell 变量展开，写进文件的内容变成了乱码（`/usr/bin/bash`）。**教训**：往远程写含有 `$`、反引号等字符的代码文件，优先用 `scp` 直接传文件或 base64 编码传输，不要用双引号包裹的 heredoc
-
-### 2026-08-10 — Apple Developer 账号 + App Store Connect 设置
-
-- 用户完成：注册 Apple Developer Program（$99/年，Individual）、注册两个 App ID（`com.shuyinlab.watchvoiceintake` / `.watchkitapp`）、App Store Connect 建 App 记录
-- 新增 `.github/workflows/release.yml`：手动触发（`workflow_dispatch`），用 App Store Connect API Key 自动签名打包上传 TestFlight，理论上不需要手动导出 `.p12`/`.mobileprovision`
+- 用户发现 Xcode Cloud 每次 push 到 main 都自动触发一次构建（`WatchVoiceIntakeWatch` App 的 `Default` workflow，启动条件是"分支变更"），跑的还是同一个已诊断到底、等 Apple 回复的问题，每次失败都发一封邮件，纯噪音
+- **已在 App Store Connect → Xcode Cloud → Default workflow 把顶部开关关掉**，停止自动触发。随时可逆，Apple 回复处理完再打开或手动 Start Build 验证
+- **顺带发现一个信息**：该 workflow 的"分发准备"字段当前是"无"（不自动提交 TestFlight/App Store，只单纯 Archive），修改时间是 2026-08-10 22:19（Zhaozhen Tong）。这意味着**这个 workflow 目前的配置根本不会走到"分发被拒绝"那一步**——只做 Archive。如果 2026-08-10 22:19 之后还有失败的构建记录，那失败原因可能不是账号分发权限问题，而是 Archive 阶段本身的问题，跟之前"三套环境完全一致卡在分发权限"的结论对不上，**下次排查前需要先核对这次改动前后的构建记录时间线，不要想当然套用旧诊断结论**
+- 决定：Apple 回复、账号问题解决后，处理顺序是——① 把"分发准备"改回 TestFlight（仅限内部测试）② 把 workflow 开关打开 ③ 手动 Start Build 验证
 
 ### 2026-08-10 — release.yml 反复失败排查（还在进行中）
 
@@ -120,3 +79,44 @@
 2. "自动签名"（`CODE_SIGN_STYLE=Automatic` + `-allowProvisioningUpdates`）在真正的无人值守 CI 环境里天生不如"手动签名 + 预先创建好的具名描述文件"可靠——这不是这个项目专属的坑，以后任何新的 iOS/watchOS 项目要接 CI 自动发布，直接从手动签名开始做，不要先尝试自动签名再踩坑
 3. **换工具(xcodebuild→fastlane)、换版本(Xcode 16.4→26.3) 报错完全不变，是很强的信号**——说明问题不在"这个特定命令怎么写"，而在更上层(账号状态/服务端权限)，这时候应该停止在命令行参数层面继续试，往账号状态方向查
 4. **全新 Apple Developer 账号当天批准后，不要假设所有权限立刻生效**——Developer Portal 网页显示"已通过"只代表最基础的账号状态，App Store 分发相关的权限可能有独立的、更慢的后端同步延迟，遇到怎么调都没用的诡异错误时，这是需要考虑的候选原因，可以先等一等再排查，不用一直烧 CI 构建次数
+### 2026-08-10 — Apple Developer 账号 + App Store Connect 设置
+
+- 用户完成：注册 Apple Developer Program（$99/年，Individual）、注册两个 App ID（`com.shuyinlab.watchvoiceintake` / `.watchkitapp`）、App Store Connect 建 App 记录
+- 新增 `.github/workflows/release.yml`：手动触发（`workflow_dispatch`），用 App Store Connect API Key 自动签名打包上传 TestFlight，理论上不需要手动导出 `.p12`/`.mobileprovision`
+
+### 2026-08-09/10 — Phase 4 续：iOS 上传队列 + 登录
+
+- 新增 `iOS/UploadQueueManager.swift`：合并好的录音持久化存到 `Documents/PendingUploads`（不是 tmp，重启不丢），失败自动重试，`recordingId` 做幂等键防重复上传
+- 新增 `iOS/AuthSession.swift`：Keychain 存 JWT（30天有效期，跟服务器 `authRequired` 中间件一致），`iOS/LoginView.swift` 提供登录界面
+- **踩坑（一次真实的疏忽）**：写完 `UploadQueueManager` 后忘了把 `PhoneConnectivityService.swift` 里的占位注释换成真正的 `UploadQueueManager.shared.enqueue(...)` 调用，导致代码"看起来完整"但合并完的录音其实从没进过上传队列。**教训**：改动分布在多个文件时，改完要搜索确认所有引用点都真的接上了，不能只看单个文件编译通过就当作完成
+- **踩坑（Windows/Mac 双边编辑同步问题）**：这个项目同时在张梦的 Mac（跑 SSH 命令做真正的编译验证）和本地 Windows（`D:\partition3\Boring_buss\WatchVoiceIntake`，方便用 `gh` push）各有一份工作副本，多次出现"改了一边忘了同步另一边"、"git commit 作者身份在 Mac 上被自动填成张梦的本地账户"等问题。**教训**：以 Mac 上跑通编译验证的那份为准，push 前用 `git bundle` 把 Mac 的精确历史带到 Windows 来推送，不要凭记忆在两边分别重写同一个改动
+- **踩坑（Shell 转义）**：早期用 SSH 命令套 heredoc 写 Swift 文件时，Swift 代码里的 `$0`（闭包简写参数）被外层 SSH 双引号命令做了 shell 变量展开，写进文件的内容变成了乱码（`/usr/bin/bash`）。**教训**：往远程写含有 `$`、反引号等字符的代码文件，优先用 `scp` 直接传文件或 base64 编码传输，不要用双引号包裹的 heredoc
+
+### 2026-08-09 — Phase 4：服务器端接入 AI Intake
+
+- 研究了 research-os 现有的会议录音异步处理管线（`server/meetings.js`：上传→AssemblyAI转写→AI总结→写入 pending 队列→客户端拉取合并），照这个成熟模式实现 Watch 语音管线，而不是重新发明
+- 新增 `server/watch.js`：`POST /api/watch/voice`——转写(复用 `handleTranscribe` 抽出的 `transcribeAudioBuffer`) → AI整理成笔记(仿照 `handleCasualChatSummarize` 的"永远直接出结果不追问"模式，新建 `organizeWatchTranscript`) → 存入新表 `watch_notes_pending`
+- 新表 `watch_notes_pending`：跟 `evolver_drafts`/`meeting_updates` 一样的"服务器只排队、客户端自己拉取合并进 `ros:memos`"规则，服务器永远不直接写 `ros:memos`
+- `recordingId`（Watch 生成的 UUID）直接做主键，实现幂等——同一段录音重传不会建重复笔记
+- 客户端 `src/pages/Memo.jsx` 新增 `pullWatchNotes()`，App 打开时自动拉取合并，**全程不经过人工确认**（这是产品要求：Watch 笔记要全自动，不像网页版 AI Intake 那样需要检查草稿再点创建）
+
+### 2026-08-09 — Phase 2/3：本地录音 + 多段录音 + Watch→iPhone 传输
+
+- 基础录音测试通过（模拟器）
+- 产品需求变更：单次录音改成"暂停/继续说/完成"三态，允许分段录音、最后合并成一条笔记再上传（避免半句话就建碎笔记）
+- **重大技术坑**：`AVAssetExportSession`（用于合并多段音频）在 watchOS 上**整体不可用**——所有 `AVAssetExportPreset*` 常量在 SDK 里都标了 `API_UNAVAILABLE(watchos)`，跟 watchOS 部署目标版本无关，watchOS 11 也一样。**解法**：把合并逻辑从 Watch 移到 iPhone（`PhoneConnectivityService`），iOS 端完整支持 `AVAssetExportSession`；Watch 只管录制+发送有序段落（带 `sessionId`/`sequenceIndex`/`segmentCount` 元数据），iPhone 收齐后再合并
+- **模拟器已知限制**：iOS/watchOS 模拟器之间 `WCSession.transferFile`（文件传输）经常静默失败，多次测试证实——这是 Apple 模拟器本身的限制，不是代码问题，**不值得花时间排查**，留到真机测试验证
+
+### 2026-08-09 — 远程开发环境搭建
+
+- 用户人在日本，Mac 只有一台旧 2014 MacBook Pro（跑不动现代 Xcode），改用女朋友张梦在中国的新 Mac 远程开发
+- 踩坑排查过程（详见对话历史，不赘述）：VNC/屏幕共享黑屏 → 换 AnyDesk 解决远程桌面；SSH 密钥登录配置成功，密钥存在本机 `D:\partition3\Services\ssh_keys\`（不要存在项目仓库或临时 scratchpad 目录，之前一度存错地方）
+- **规则**：本项目所有 SSH 命令行工作交给 Claude 做，图形界面操作（登录 Apple ID、Watch 配对信任、点击物理按钮）需要用户/张梦配合远程桌面完成
+
+### 2026-08-09 — Phase 1：项目搭建 + 云端编译
+
+- 建仓库，XcodeGen + GitHub Actions macOS runner 做免费云端编译验证（不需要本地 Mac）
+- 踩坑：Watch target 用了过时的 `application.watchapp2` 类型（watchOS 7 之前的双 target 打包格式），跟 watchOS 10+ 部署目标搭配导致 XcodeGen 生成重复输出路径，`xcodebuild` 报 "Multiple commands produce"。**修法**：改成 watchOS 9+ 的标准单 target `application` 类型
+- Phase 1 完成：CI 编译通过（未签名）
+
+
