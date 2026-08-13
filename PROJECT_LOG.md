@@ -6,10 +6,12 @@
 
 - ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目，但下次会话可如实告知用户 Plan B 现状供其判断优先级。
 - ✅ 全部功能代码写完，CI 编译通过，已推送 GitHub
-- ✅ 根因定位：Apple 账号分发权限被拒绝，三套独立环境（xcodebuild/fastlane/Xcode Cloud）一致复现，技术侧已排查到极限
+- ✅ 根因定位：Apple 账号分发权限被拒绝（**注意：这是 CI 分发/签名管道问题，从未进入过 App Review 队列**），三套独立环境（xcodebuild/fastlane/Xcode Cloud）一致复现，技术侧已排查到极限
 - ✅ 已提交 Apple 正式技术支持工单（案例编号 `20000133548930`），收到过一次模板确认信并已中文回复要求核实账号权限
 - ✅ 已关闭 Xcode Cloud 自动构建触发，避免等待期间刷屏失败邮件
-- 下一步：纯等待 Apple 邮件回复。下次会话打开先问用户"Apple 邮件回了没有"——回了就按 Apple 方案处理，没回可以再等或去工单页面看状态。不紧急待办：用户想要一个"发布前自动检查清单"脚本，尚未开始。
+- ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断中的 1 项（账号删除入口）已写代码修完，另 1 项（审核测试账号）确认为纯后台操作，代码帮不上忙
+- ⚠️ 账号删除功能代码已写完但**尚未编译验证**（本机 Windows 无法本地跑 Xcode，需要下次联调远程 Mac / CI 时验证）
+- 下一步：① 纯等待 Apple 邮件回复解决分发权限问题；② 用户去 App Store Connect 后台填审核测试账号（checklist 第1项已给好操作步骤+建议文案）；③ 下次有远程 Mac / CI 可用时验证新增的删除账号流程编译+跑通。下次会话打开先问用户"Apple 邮件回了没有"。
 
 ---
 
@@ -35,6 +37,55 @@
 ---
 
 ## 时间线
+### 2026-08-13（续）— 修复账号删除入口硬阻断；澄清 Sign in with Apple 不适用
+
+- 用户确认"只有自己用"跟"Sign in with Apple"是两码事——后者只在提供第三方 OAuth 登录（Google/
+  Facebook 等）时才触发（Guideline 4.8），这个 App 走自建邮箱密码账号系统，本来就不适用，之前的
+  ✅ 判断不变
+- 调研 research-os 后端，发现 `server/index.js:363` **已经有** `DELETE /api/account`（authRequired，
+  强制 `confirm: true`、会挡有活跃订阅的账号，调用 `deleteUserSafe`）——这条路本来就存在且带防护，
+  只是从没有任何客户端接过它（`research-os/src` 网页端也没接，`server/pages/terms.html` 里"可通过
+  App 内置功能删除账号"这句话其实是空头支票）。因为已有防护逻辑，这次不用碰任何"怎么删数据"的
+  判断，只是加一层客户端调用，风险比从零写删除逻辑低得多
+- `iOS/AuthSession.swift`：新增 `deleteAccount()`，调用上述接口，处理 `active_subscription_exists`
+  返回中文提示，成功后自动本地登出；顺带把内部 `LoginError` 枚举改名成 `AuthError`（只在文件内部
+  使用，登录/删除共用同一个错误类型，改名不影响任何外部调用）
+- `iOS/AccountSettingsView.swift`（新文件）：账号设置页，"退出登录" + "删除账号"（destructive 按钮
+  + 二次确认 alert，文案写明"无法撤销"），通过 `ContentView`（`WatchVoiceIntakeApp.swift`）右上角
+  新增的人形图标 toolbar 按钮打开
+- **未验证**：本机是 Windows，没法本地跑 Xcode 编译，这次改动还没有真正编译过，下次联调远程 Mac
+  或触发 CI 时要验证一遍能编译通过、删除流程真的能走通
+- `APP_STORE_PREFLIGHT_CHECKLIST.md` 同步更新：第2项（账号删除）标 ✅ 已修复；第1项（审核测试账号）
+  补充了具体操作步骤和一段可以直接贴进 App Review Notes 的英文说明（用来降低被 Guideline
+  4.2/2.3.1 当"私有工具"卡审核的概率）
+
+### 2026-08-13 — 新增 App Store 发布前合规检查 skill，首次审计发现 2 项硬阻断
+
+- 背景：用户怀疑之前的"审核被拒"跟"录音数据立刻上传服务器"的隐私合规有关，想要一个每次发布前
+  能自动检查的清单。审计代码后发现两点需要澄清：
+  1. **当前卡住的 CI 分发权限问题（案例 `20000133548930`）跟 App Review 完全无关**——app 从未
+     成功打包上传过，从没被人工审核团队看过，两个邮件线程（Apple Technical Support vs 未来可能
+     的 App Review 反馈）不是同一回事，不要混着等
+  2. **真正扫出来的合规风险，比"数据上传时机"更实质、概率更高的是两条**：
+     - App 是纯邮箱/密码登录、指向私有服务器、无注册流程（`AuthSession.swift`/`LoginView.swift`
+       注释原文写"this app has exactly one user, its own owner"）——如果提交时 App Store
+       Connect 的 App Review Information 没填测试账号，审核员进不去登录墙，这是 Apple
+       Guideline 2.1 最常见的拒绝原因之一
+     - 支持登录但没有账号删除入口（`AuthSession.swift` 只有 `logout()`），不满足 Apple
+       Guideline 5.1.1(v)（2022 起强制）
+  - "数据立即上传"这个用户最初怀疑的点，本身审计下来**不是**违规行为——大量云同步类 App 都这样
+    做，只要 App Privacy 营养标签如实申报（Audio Data + 关联身份）即可，不是硬阻断
+- 新增 `.claude/skills/appstore-preflight/SKILL.md`：项目专属 skill，每次发布前跑一遍，读
+  `APP_STORE_PREFLIGHT_CHECKLIST.md` 逐项核对代码现状，更新状态标记，明确区分"代码能验证的项"
+  和"必须去 App Store Connect 后台人工确认的项"（skill 不假装能验证后台配置）
+- 新增 `APP_STORE_PREFLIGHT_CHECKLIST.md`：8 项检查，2 项 ❌ 硬阻断（测试账号、账号删除入口）、
+  3 项 ⏳ 需去后台配置（隐私政策 URL、App Privacy 标签、Export Compliance 加密声明）、3 项 ✅
+  已通过（麦克风权限文案、不适用 Sign in with Apple、传输加密）
+- **策略问题的答案（用户明确问过）**：不需要等 Apple 确认"被拒"才能动手改。因为这个 app 至今
+  没有真正提交成功过，"提交-被拒-改-再提交"这个周期根本还没开始，趁着等分发权限问题解决的这段
+  空档，并行把 checklist 里的硬阻断项修完，等分发权限一通，直接一次性提交一个已经合规的版本，
+  避免"先用有问题的版本占位提交、再被拒一次、再改"这种多绕一圈的路径
+
 ### 2026-08-11 — Apple 技术支持首次回复（仍是模板回复，非实质技术答复）
 
 - 收到 Apple 开发者支持中文团队（客服 Neil）回复邮件，**内容是通用模板**：确认收到工单、引导去 Apple Developer Forums 自助查找答案、给了案例编号、留了预约电话入口——**没有针对"账号级分发权限被拒绝"这个具体问题给出实质性技术回应**，判断是人工客服打开工单后的第一层标准流程，还没真正进入技术排查

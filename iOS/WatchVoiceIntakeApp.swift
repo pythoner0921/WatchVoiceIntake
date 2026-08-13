@@ -34,25 +34,40 @@ struct WatchVoiceIntakeApp: App {
 struct ContentView: View {
     @EnvironmentObject var connectivity: PhoneConnectivityService
     @ObservedObject var uploadQueue = UploadQueueManager.shared
+    @State private var showAccountSettings = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Voice Intake")
-                .font(.title2).bold()
-            Text("Relays voice notes from your Watch to Research OS.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            if connectivity.pendingCount > 0 {
-                Text("\(connectivity.pendingCount) segment(s) received")
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Voice Intake")
+                    .font(.title2).bold()
+                Text("Relays voice notes from your Watch to Research OS.")
                     .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                if connectivity.pendingCount > 0 {
+                    Text("\(connectivity.pendingCount) segment(s) received")
+                        .font(.footnote)
+                }
+                if uploadQueue.queuedCount > 0 {
+                    Text("\(uploadQueue.queuedCount) recording(s) waiting to upload")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
             }
-            if uploadQueue.queuedCount > 0 {
-                Text("\(uploadQueue.queuedCount) recording(s) waiting to upload")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
+            .padding()
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showAccountSettings = true
+                    } label: {
+                        Image(systemName: "person.crop.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showAccountSettings) {
+                AccountSettingsView()
             }
         }
-        .padding()
     }
 }

@@ -30,7 +30,7 @@ final class AuthSession: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let message = (try? JSONDecoder().decode([String: String].self, from: data))?["message"]
-            throw LoginError.failed(message ?? "登录失败，请检查邮箱和密码")
+            throw AuthError.failed(message ?? "登录失败，请检查邮箱和密码")
         }
         struct LoginResponse: Decodable { let token: String }
         let decoded = try JSONDecoder().decode(LoginResponse.self, from: data)
@@ -43,7 +43,34 @@ final class AuthSession: ObservableObject {
         isLoggedIn = false
     }
 
-    enum LoginError: LocalizedError {
+    // Apple Guideline 5.1.1(v): apps that support account creation must offer
+    // an in-app way to delete the account, not just "contact support". The
+    // server side (`DELETE /api/account` in research-os) already existed and
+    // already guards against active subscriptions / requires explicit
+    // confirm — this just wires the existing endpoint up to a client.
+    func deleteAccount() async throws {
+        guard let token = Self.readToken() else {
+            throw AuthError.failed("未登录")
+        }
+        var request = URLRequest(url: Self.apiBaseURL.appendingPathComponent("api/account"))
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(["confirm": true])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            struct ErrorBody: Decodable { let error: String?; let message: String? }
+            let body = try? JSONDecoder().decode(ErrorBody.self, from: data)
+            if body?.error == "active_subscription_exists" {
+                throw AuthError.failed("请先在 Research OS 网页端取消订阅，再删除账号")
+            }
+            throw AuthError.failed(body?.message ?? "删除账号失败，请稍后重试")
+        }
+        await MainActor.run { self.logout() }
+    }
+
+    enum AuthError: LocalizedError {
         case failed(String)
         var errorDescription: String? {
             switch self { case .failed(let message): return message }
