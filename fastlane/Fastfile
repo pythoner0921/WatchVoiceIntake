@@ -21,6 +21,13 @@ platform :ios do
       configuration: "Release",
       export_method: "app-store",
       export_team_id: ENV["APPLE_TEAM_ID"],
+      # api_key was previously only passed to upload_to_testflight below —
+      # exportArchive had no credentials to ask Apple which distribution
+      # methods are valid for this team, so IDEDistributionMethodManager got
+      # an empty set back and rejected "app-store" as an unrecognized method
+      # ("expected one {} but found app-store"). Not an account permission
+      # issue — the archive/export step itself was never authenticated.
+      api_key: api_key,
       export_options: {
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",

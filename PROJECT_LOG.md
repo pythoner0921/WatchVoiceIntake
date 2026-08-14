@@ -2,16 +2,14 @@
 
 > Apple Watch 语音备忘录，自动转写+AI整理，直接写入 Research OS 的 AI Intake 笔记系统。Watch 只负责录音和可靠提交，不做任何本地转写/总结。
 
-## 当前状态（最后更新：2026-08-13）
+## 当前状态（最后更新：2026-08-14）
 
-- ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目，但下次会话可如实告知用户 Plan B 现状供其判断优先级。
-- ✅ 全部功能代码写完，CI 编译通过，已推送 GitHub
-- ✅ 根因定位：Apple 账号分发权限被拒绝（**注意：这是 CI 分发/签名管道问题，从未进入过 App Review 队列**），三套独立环境（xcodebuild/fastlane/Xcode Cloud）一致复现，"免费/付费账户 Team 混淆"这个方向已实测排除，技术侧已排查到极限
-- ✅ 已关闭 Xcode Cloud 自动构建触发，避免等待期间刷屏失败邮件
-- ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断中的 1 项（账号删除入口）已写代码修完并编译验证通过
-- ✅ **审核测试账号已建好**：research-os 全新空账号 `shuyin.unlimited+applereview@gmail.com`（user_id 37），手动开了永久 Pro（`current_period_end` 2027-08-13，纯本地标记不涉及真实订阅）防止审核期间试用期到期导致功能失效。密码只在对话里给了用户，**不写进本文件**（会被推上 GitHub）。checklist 第1项（审核测试账号）已完成，用户可直接把这组邮箱/密码填进 App Store Connect → App Review Information → Sign-In Information
-- ✅ **用户已发出第二次回复邮件**（内容见 `APPLE_SUPPORT_REPLY_2026-08-13.md`），案例编号 `20000133548930`，当前**纯等待 Apple 下一次回复**
-- 下一步：纯等 Apple 邮件回复。下次会话打开先问用户"Apple 邮件回了没有"——回了要留意这次回复解决的只是"CI 能不能打包"，后面还有上传 TestFlight→提交 App Review→正式上线三步，每步都要手动往前推，不会自动接力。
+- 🔧 **推翻了"Apple 账号权限被拒绝"这个根因判断**——真正原因是 `fastlane/Fastfile` 的 `build_app` 没有传 `api_key`，导致 exportArchive 阶段完全没有认证凭证去问 Apple"这个 team 能用哪些分发方式"，Apple 返回空集合，才报出 `expected one {} but found app-store`。跟账号、付费团队、证书、描述文件、开发者协议全部无关——这些之前一一核实过都是对的。详见下方 2026-08-14 条目。
+- ✅ 已修复并推送，正在验证是否能真正跑通发布。
+- ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目。
+- ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断都已完成：账号删除入口（代码已修完+编译验证通过）+ 审核测试账号（已建号+已填进 App Store Connect 并保存）
+- ⚠️ **审核测试账号权限状态**：`shuyin.unlimited+applereview@gmail.com`（user_id 37）目前是 **7 天试用期，到期 2026-08-20 10:50**，不是永久，非必须修复
+- 下一步：等这次 Release (TestFlight) 跑完看是否真的成功；成功了就是上传 TestFlight → 提交 App Review → 正式上线，每步都要手动往前推。
 
 ---
 
@@ -37,6 +35,51 @@
 | `APPSTORE_PRIVATE_KEY` | `.p8` 私钥完整内容 | **必须是 Admin 角色的 Key**，App Manager 角色权限不够（见踩坑记录） |
 
 ---
+
+### 2026-08-14 — 推翻"账号权限被拒绝"根因，真正原因是 Fastfile 里 api_key 没传给 build_app
+
+- 用户反馈"发布一直失败但我们一直在等，这没意义"，重新逐项核实此前记录的"Apple 账号分发权限被拒绝"根因，结果全部核实通过、无一异常：
+  - 会员资格页：Team `28UXGDR5KC`，计划 Apple Developer Program（付费），续订至 2027-08-11
+  - App Store Connect API Key：当前生效的 `CI Release` key 确认归属这个付费 team，权限"管理"
+  - Distribution 证书：归属同一 team，有效期到 2027-08-10
+  - Provisioning Profiles：`WatchVoiceIntake AppStore` / `WatchVoiceIntakeWatch AppStore` 两个 App Store 类型描述文件都存在，跟 Fastfile 里引用的名字完全匹配
+  - 商务协议页：免费 App 协议状态"有效"（本项目免费，不需要付费 App 协议）
+  - GitHub secrets 时间戳交叉核对：`APPLE_TEAM_ID` 在 8/13 触发失败前 7 秒确实被更新过，说明用户确实认真做过账号调整，方向是对的，只是没查到真正卡点
+- 真正卡点是重新看 CI 日志里"Debug — dump downloaded provisioning profiles"这步，输出是 `No such file or directory`——export 阶段本地一份描述文件都没有，说明这一步从未真正跟 Apple 服务器认证过
+- 回头看 `fastlane/Fastfile`：`api_key = app_store_connect_api_key(...)` 生成的凭证只传给了最后的 `upload_to_testflight`，`build_app`（真正执行 archive+export 的那一步）完全没有传 `api_key`——`xcodebuild -exportArchive` 因此没有任何凭证可用来查询"这个 team 有哪些可用分发方式"，Apple 端返回空集合，Xcode 报 `expected one {} but found app-store`（`{}` 就是那个空集合，不是"app-store 被拒绝"，是"压根没查到任何合法选项"）
+- **教训**：报错信息里"账号缺少某权限"式的措辞，不代表真的是账号侧问题——`IDEDistributionMethodManager` 在完全没认证的情况下也会报几乎一样的错。之前三套环境（xcodebuild/fastlane/Xcode Cloud）复现一致，只是因为三套环境都复用了同一个有缺陷的 Fastfile/脚本逻辑，"多环境复现"不能当作"排除脚本 bug"的证据
+- 修复：`build_app(...)` 里加一行 `api_key: api_key`，已提交推送，正在触发验证跑一次真实 Release
+
+### 2026-08-13（续六）— 纠正"永久 Pro"误记；测试账号实际已填进 App Store Connect
+
+- 查证发现"续四"那条记录不准确：写进 `subscriptions` 表的那条自定义记录
+  （`stripe_subscription_id: 'apple-review-test-account'`）**从未真正生效**——`getAccountStatus()`
+  （`server/db.js:541`）只认 `stripe_subscription_id` 以 `sub_` 开头的真实 Stripe 订阅，这条自定义
+  ID 被直接跳过，实际生效的是账号自带的 7 天试用期（`trial_ends_at: 2026-08-20T10:50:30Z`）
+- 排查过程：先查了本机 `research-os/data/research-os.db`（过期的本地开发库副本，误判账号不存在）→
+  用生产 API `POST /api/auth/register` 探测（返回 `email_taken`，证明账号确实存在）→ 用
+  `GET /api/admin/users`（`x-admin-key` 头）查到真实状态，确认试用期而非永久 Pro
+- **教训**：跨会话/跨进程共享的状态（尤其涉及生产数据库），仅凭 `PROJECT_LOG.md` 里的记录判断"是否
+  已完成"是不够的——文字记录可能写了但操作没生效、或操作本身有 bug。凡是能通过 API/命令行独立验证的
+  状态，动手改之前先查一遍实际状态，不要直接信任已有文字记录
+- 用户在另一个对话窗口尝试"修复成永久"，用的还是同一种不生效的写法（同样的 `subscriptions` 表自定义
+  记录），验证后确认没解决问题——**两次尝试路径相同，都没有触达真正生效的字段**
+- 正确的修复方式是设 `is_legacy_free = 1`（`server/db.js:565`，代码里本来就是给"永久免费不走 Stripe"
+  设计的字段，`getAccountStatus()` 会直接认，不受 trial 时间限制），命令：
+  ```
+  ssh SHUYIN@192.168.3.5
+  sudo /usr/local/bin/docker exec research-os-blue node -e "
+  const Database = require('/app/node_modules/better-sqlite3');
+  const db = new Database('/app/data/research-os.db');
+  db.prepare('UPDATE users SET is_legacy_free = 1 WHERE id = ?').run(37);
+  console.log(JSON.stringify(db.prepare('SELECT id, email, is_legacy_free, trial_ends_at FROM users WHERE id = ?').get(37)));
+  "
+  ```
+  这条命令因为是直接写生产数据库，被系统权限规则拦截、AI 助手无法代执行，**需要用户自己在 SSH 里跑**——
+  截至本条记录，用户还没跑，账号仍是 7 天试用状态，**这是可选项，不是硬阻断**（审核一轮大概率 7 天够用）
+- 用户已经完成 App Store Connect 侧的操作：登录信息（用户名+密码）已填入 Sign-In Information、备注
+  英文说明已贴入 Notes、已点保存。checklist 第1项状态改为 ✅ 已完成（权限是否永久是遗留小事项，不影响
+  这一项的完成判定）
 
 ### 2026-08-13（续四）— 建好 App Review 用的测试账号
 
