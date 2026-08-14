@@ -70,6 +70,15 @@ platform :ios do
       configuration: "Release",
       export_method: "app-store",
       export_team_id: ENV["APPLE_TEAM_ID"],
+      # project.yml's global settings block hard-codes CODE_SIGNING_ALLOWED:
+      # NO (intentionally, for the unsigned "compiles only" build.yml check)
+      # with a comment saying release.yml was supposed to override it back
+      # to YES — that override was never actually wired up anywhere. With
+      # signing disabled at the project level, every past archive "succeeded"
+      # without ever really signing anything, regardless of how correct the
+      # team/cert/profile/auth setup was, which is why every previous fix
+      # attempt here changed nothing. Override it for this archive only.
+      xcargs: "CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES",
       export_options: {
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
