@@ -11,6 +11,8 @@
 - ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断都已完成：账号删除入口（代码已修完+编译验证通过）+ 审核测试账号（已建号+已填进 App Store Connect 并保存）
 - ⚠️ **审核测试账号权限状态**：`shuyin.unlimited+applereview@gmail.com`（user_id 37）目前是 **7 天试用期，到期 2026-08-20 10:50**，不是永久，非必须修复
 - 下一步：纯等 Apple 邮件回复（这次问的是服务器端校验拒绝的具体原因，不是账号权限）。下次会话打开先问用户"Apple 邮件回了没有"。
+- ✅ 已设置每 4 小时自动检查案例 `20000133548930` 状态的定时任务（CronCreate，session-only，7天后自动失效，需要这个会话窗口保持打开）——有新回复会自动读取、按内容判断修法、重跑 CI、并主动汇报。
+- ✅ `APP_STORE_PREFLIGHT_CHECKLIST.md` 补了"商店资料清单"章节（App 名称/副标题/描述/关键词字数限制、截图尺寸要求、支持网址等）——用户确认这块（App Store 正式上架前的素材准备）目前完全没做，跟 TestFlight 技术卡点互相独立，可以趁等 Apple 回复的空档提前准备。
 
 ---
 

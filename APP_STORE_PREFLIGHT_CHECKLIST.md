@@ -3,27 +3,26 @@
 > 用法：每次准备提交 App Store / TestFlight 之前跑一遍 `/appstore-preflight`。
 > 状态标记：✅ 已通过 / ⚠️ 建议修但不一定阻断 / ❌ 硬阻断，大概率导致被拒或提交不了 / ⏳ 需要人工去后台确认，代码层面无法判断。
 
-最后核对日期：2026-08-13
+最后核对日期：2026-08-14
 
 ---
 
 ## 硬阻断项（不修大概率被拒 / 提交不了）
 
-### 1. ⏳ 审核可测试性 — App Review Information 里是否填了测试账号（纯后台操作，代码帮不上忙）
+### 1. ✅ 审核可测试性（2026-08-13 已完成）
 - **代码现状**：`iOS/LoginView.swift` + `iOS/AuthSession.swift` 是纯邮箱/密码登录，指向私有服务器
   `researchos.shuyinlab.com`，**app 内没有注册流程**。审核员打开 app 第一屏就是登录框，登不进去
-  后面所有功能都看不到。
-- **风险**：Apple Guideline 2.1 (Information Needed) 最常见的拒绝原因之一。**跟"Sign in with Apple"
-  无关**（那条只在提供第三方 OAuth 登录时才触发，见下方第7项），这里是单纯的"审核员需要一组能登录
-  的凭证"。
-- **要做的事**（提交前手动操作，5分钟）：
-  1. 打开 App Store Connect → 你的 App → App Review 信息 → "Sign-In Information"
-  2. 勾选"需要登录"，填一组邮箱+密码——可以直接用你自己的真实账号（只有你自己用，审核员登进去看
-     到你的真实数据也无妨），介意的话可以在 researchos 网页端另建一个空的测试子账号
-  3. 建议在 App Review Notes 里补一句英文说明，降低被 Guideline 4.2(最低功能性)/2.3.1 卡的概率，
-     比如："This app is a personal voice-note capture client that connects to the user's own
-     account on a note-taking backend the developer also built and operates. Functionality:
-     record on Apple Watch → auto-transcribe → AI-organized notes, synced to the account."
+  后面所有功能都看不到——跟"Sign in with Apple"无关（那条只在提供第三方 OAuth 登录时才触发，见下方
+  第7项），这里单纯是"审核员需要一组能登录的凭证"。
+- **已完成**：
+  1. 新建了专用空账号 `shuyin.unlimited+applereview@gmail.com`（researchos user_id 37，零真实数据），
+     不用暴露用户主账号里的真实笔记
+  2. 已填进 App Store Connect → App Review 信息 → Sign-In Information，勾选"需要登录"，已保存
+  3. 已在 Notes 里贴了英文说明（降低被 Guideline 4.2/2.3.1 当"私有小工具"卡审核的概率）
+- **⚠️ 遗留小事项（不阻断，可选）**：这个账号目前是 **7 天试用期，到期 2026-08-20 10:50**，还不是永久。
+  想改成永久要在 NAS 上手动跑一条 SQL（`UPDATE users SET is_legacy_free = 1 WHERE id = 37`，命令见
+  `PROJECT_LOG.md` 对应条目），因为改生产数据库被系统权限规则拦截、只能用户自己跑。如果不介意，7 天
+  大概率够一轮审核用，到期前重新注册个新空账号换上去也很快。
 
 ### 2. ✅ 账号删除入口（2026-08-13 已修复）
 - **修复内容**：`iOS/AuthSession.swift` 新增 `deleteAccount()`，调用 research-os 后端**已经存在**的
@@ -75,6 +74,44 @@
 
 ### 8. ✅ 数据传输加密
 - 全部走 HTTPS，没有明文传输，无需额外处理（对应第5项的申报选项）。
+
+---
+
+## 商店资料清单（App Store 产品页面素材，2026-08-14 新增）
+
+> 这部分跟第②步"CI 能不能把包传上 TestFlight"完全独立、互不依赖——现在就能准备，不用等技术问题解决。
+> TestFlight 内测阶段**不需要**这些东西，只有正式提交 App Review（走完整 App Store 上架流程）才要。
+
+去 App Store Connect → App（vioce intake）→ 分发 → 对应版本页面填，路径就是之前截图看到的那个页面。
+
+### 必填项（❌ 不填就提交不了）
+
+| 项目 | 限制 | 备注 |
+|---|---|---|
+| App 名称 | 最多 30 字符 | 当前是 "vioce intake"，**建议顺便把拼写错误改成 "Voice Intake"** |
+| 副标题（Subtitle） | 最多 30 字符 | 当前是空的，一句话说明 App 是干什么的，比如"语音笔记，自动转写整理" |
+| 描述（Description） | 最多 4000 字符 | 说清楚核心功能：Apple Watch 录音 → 自动转写 → AI 整理成笔记 |
+| 关键词（Keywords） | 最多 100 字符，逗号分隔 | 影响 App Store 内搜索，不会展示给用户看 |
+| 支持网址（Support URL） | 必须是可访问的真实网址 | 可以用 researchos.shuyinlab.com 下的一个页面，哪怕只是一段联系方式/FAQ |
+| 隐私政策网址 | 必须可访问 | 跟第③项是同一件事，两处都要填同一个 URL |
+| **截图** | 至少 1 组机型，尺寸见下 | 当前完全空白（0/3 预览、0/10 截屏），是目前唯一还没做的硬阻断 |
+
+**截图尺寸**（只需准备 App Store Connect 页面上标红 * 号的那组，其余机型 Apple 现在支持自动缩放生成，不强制每个尺寸单独传）：
+- iPhone 6.9"（或页面显示要求的那个最新尺寸）：需要至少 3 张，最多 10 张，格式 PNG/JPG
+- 如果 Apple Watch 部分也要求截图：另外准备一组 Watch 界面截图
+
+### 建议项（⚠️ 不填不会被拒，但强烈建议）
+
+| 项目 | 限制 | 备注 |
+|---|---|---|
+| 促销文本（Promotional Text） | 最多 170 字符 | 唯一一个"不用重新提审"就能随时改的字段，适合放"最近更新了什么" |
+| 营销网址（Marketing URL） | 可选 | 没有独立官网的话可以不填 |
+| App 预览视频 | 最多 3 个，单个 ≤30 秒 | 完全可选，不做不影响审核 |
+
+### 准备方式建议
+
+- 截图最快的做法：用模拟器跑几个核心界面（录音中、笔记列表、转写结果）截图，不需要真机；App Store Connect 对截图内容审核相对宽松，只要真实反映 App 界面即可，不需要精美的营销设计图
+- 文案（名称/副标题/描述/关键词）可以先用 AI 起草中英文两版，反正后续随时能改
 
 ---
 
