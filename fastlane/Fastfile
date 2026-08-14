@@ -115,6 +115,7 @@ platform :ios do
     # own in this bypassed-gym-archive flow. Pass it explicitly.
     upload_to_testflight(
       api_key: api_key,
+      app_identifier: "com.shuyinlab.watchvoiceintake",
       app_platform: "ios",
       skip_waiting_for_build_processing: true,
     )
