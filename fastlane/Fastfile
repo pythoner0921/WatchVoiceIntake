@@ -120,6 +120,12 @@ platform :ios do
       export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{auth_key_path} -authenticationKeyID #{ENV['APPSTORE_KEY_ID']} -authenticationKeyIssuerID #{ENV['APPSTORE_ISSUER_ID']}"
     )
 
+    # altool refuses arbitrary paths for --apiKey — it only looks in a
+    # fixed set of directories and expects the exact filename
+    # AuthKey_<KEYID>.p8 there.
+    FileUtils.mkdir_p(File.expand_path("~/private_keys"))
+    FileUtils.cp(auth_key_path, File.expand_path("~/private_keys/AuthKey_#{ENV['APPSTORE_KEY_ID']}.p8"))
+
     ipa_path = Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]
     sh(
       "xcrun altool --validate-app -f '#{ipa_path}' -t ios " \
