@@ -95,19 +95,17 @@ platform :ios do
       sh("/usr/libexec/PlistBuddy -c \"Add :ApplicationProperties:#{key} string #{value}\" '#{archive_plist}'")
     end
 
-    # Export succeeded (real signed .ipa produced), but the upload step
-    # after it — pilot, which shells out to the legacy `altool` binary —
-    # fails with "Unable to determine app platform for 'Undefined' software
-    # type" regardless of which app/bundle ID it targets (tried both the
-    # ambiguous identifier string and the exact numeric Apple ID, identical
-    # error both times — this is a known unresolved altool bug reported by
-    # multiple developers on Apple's own forums, not something fixable from
-    # our side). Since Xcode 13, exportOptionsPlist supports
-    # `destination: upload`, which makes `xcodebuild -exportArchive` upload
-    # directly to App Store Connect using the same authenticationKey flags
-    # already passed via export_xcargs — a completely different code path
-    # from altool/pilot that bypasses this bug entirely. No separate
-    # upload_to_testflight call needed; export IS the upload now.
+    # destination: upload (bypassing altool/pilot) also hit "Validation
+    # failed n/a" — same opaque, detail-free STATE_ERROR.VALIDATION_ERROR
+    # from Apple's Iris API, confirmed via ContentDelivery.log, even after
+    # adding the missing AppIcon. Two independent upload code paths (altool
+    # and ContentDelivery) both fail identically with zero diagnostic
+    # detail, which points at Apple's backend rejecting something about the
+    # actual package content rather than either tool. Switch back to a
+    # plain export (no upload) so archive/export keeps succeeding reliably,
+    # then separately run `xcrun altool --validate-app` — an older,
+    # dedicated validation path that historically surfaces a specific
+    # human-readable reason instead of just an opaque error ID.
     build_app(
       skip_build_archive: true,
       archive_path: archive_path,
@@ -117,10 +115,17 @@ platform :ios do
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
           "com.shuyinlab.watchvoiceintake.watchkitapp" => "WatchVoiceIntakeWatch AppStore",
-        },
-        destination: "upload",
+        }
       },
       export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{auth_key_path} -authenticationKeyID #{ENV['APPSTORE_KEY_ID']} -authenticationKeyIssuerID #{ENV['APPSTORE_ISSUER_ID']}"
+    )
+
+    ipa_path = Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]
+    sh(
+      "xcrun altool --validate-app -f '#{ipa_path}' -t ios " \
+      "--apiKey #{ENV['APPSTORE_KEY_ID']} --apiIssuer #{ENV['APPSTORE_ISSUER_ID']} " \
+      "--output-format xml",
+      log: true
     )
   end
 end
