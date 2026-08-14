@@ -95,17 +95,19 @@ platform :ios do
       sh("/usr/libexec/PlistBuddy -c \"Add :ApplicationProperties:#{key} string #{value}\" '#{archive_plist}'")
     end
 
-    # destination: upload (bypassing altool/pilot) also hit "Validation
-    # failed n/a" — same opaque, detail-free STATE_ERROR.VALIDATION_ERROR
-    # from Apple's Iris API, confirmed via ContentDelivery.log, even after
-    # adding the missing AppIcon. Two independent upload code paths (altool
-    # and ContentDelivery) both fail identically with zero diagnostic
-    # detail, which points at Apple's backend rejecting something about the
-    # actual package content rather than either tool. Switch back to a
-    # plain export (no upload) so archive/export keeps succeeding reliably,
-    # then separately run `xcrun altool --validate-app` — an older,
-    # dedicated validation path that historically surfaces a specific
-    # human-readable reason instead of just an opaque error ID.
+    # `altool --validate-app` turned out to be a dead end — it errors with
+    # "Cannot determine the platform; please specify --platform" regardless
+    # of flags tried (-t ios, --type ios --platform ios), because altool
+    # itself is deprecated by Apple and this subcommand no longer works
+    # reliably. Both real upload paths tried so far (pilot/altool upload,
+    # and xcodebuild's destination:upload/ContentDelivery) independently
+    # failed with the same opaque, detail-free "Validation failed n/a"
+    # (STATE_ERROR.VALIDATION_ERROR) — pointing at the package content
+    # itself, not either tool. Missing CFBundleIconName alongside a newly
+    # added asset-catalog app icon, and no ITSAppUsesNonExemptEncryption
+    # declaration, are both known silent causes of exactly this — added to
+    # project.yml's Info.plist properties. Back to the real upload path via
+    # destination: upload.
     build_app(
       skip_build_archive: true,
       archive_path: archive_path,
@@ -115,23 +117,10 @@ platform :ios do
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
           "com.shuyinlab.watchvoiceintake.watchkitapp" => "WatchVoiceIntakeWatch AppStore",
-        }
+        },
+        destination: "upload",
       },
       export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{auth_key_path} -authenticationKeyID #{ENV['APPSTORE_KEY_ID']} -authenticationKeyIssuerID #{ENV['APPSTORE_ISSUER_ID']}"
-    )
-
-    # altool refuses arbitrary paths for --apiKey — it only looks in a
-    # fixed set of directories and expects the exact filename
-    # AuthKey_<KEYID>.p8 there.
-    FileUtils.mkdir_p(File.expand_path("~/private_keys"))
-    FileUtils.cp(auth_key_path, File.expand_path("~/private_keys/AuthKey_#{ENV['APPSTORE_KEY_ID']}.p8"))
-
-    ipa_path = Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]
-    sh(
-      "xcrun altool --validate-app -f '#{ipa_path}' --type ios --platform ios " \
-      "--apiKey #{ENV['APPSTORE_KEY_ID']} --apiIssuer #{ENV['APPSTORE_ISSUER_ID']} " \
-      "--output-format xml",
-      log: true
     )
   end
 end
