@@ -4,12 +4,13 @@
 
 ## 当前状态（最后更新：2026-08-14）
 
-- 🎉 **CI 第一次真正打出了签名正确的 .ipa 并成功导出**——`fastlane/Fastfile` 里连续 6 个真实 bug 全部修完（`api_key` 未传、描述文件未下载、`CODE_SIGNING_ALLOWED` 被关、`DEVELOPMENT_TEAM` 未传、archive 的 `ApplicationProperties` 字典缺失、`upload_to_testflight` 参数名错误），跟"Apple 账号权限被拒绝"这个此前认定的根因完全无关——账号、付费团队、证书、描述文件、开发者协议逐项核实过都没问题。详见下方 2026-08-14 条目，完整排查过程。
-- 🚧 **卡在最后一步：上传 TestFlight 报 `Unable to determine app platform for 'Undefined' software type'`**——这是 App Store Connect 里这个 App 记录本身的"软件类型/平台"字段异常，CI 侧已经无能为力，需要去网页端确认/修复这个 App 记录（很可能跟之前发现的 "vioce intake" 拼写错误是同一个记录）。
+- 🎉 **CI 第一次真正打出了签名正确的 .ipa 并成功导出**——`fastlane/Fastfile`/`project.yml` 里连续 8 个真实 bug 全部修完（`api_key` 未传、描述文件未下载、`CODE_SIGNING_ALLOWED` 被关、`DEVELOPMENT_TEAM` 未传、archive 的 `ApplicationProperties` 字典缺失、`upload_to_testflight` 参数名错误、App 图标从未配置、`CFBundleIconName`/加密合规声明缺失），跟"Apple 账号权限被拒绝"这个此前认定的根因完全无关——账号、付费团队、证书、描述文件、开发者协议逐项核实过都没问题。详见下方 2026-08-14 条目，完整排查过程。
+- 🚧 **卡在最后一步：上传 TestFlight 时被服务器无理由拒绝**（`Validation failed. n/a`，`STATE_ERROR.VALIDATION_ERROR`）——两条独立上传路径（`altool`、`xcodebuild -exportArchive destination:upload`）都在同一阶段被拒，报错完全一致且没有具体原因，客户端能查的手段（图标、Info.plist 必需字段、认证方式）都已排除。判断已经到了只有 Apple 后台日志能看到真实原因的地步。
+- ✅ **已通过 App Store Connect 网页版"联系我们"，在原工单 `20000133548930` 下发了新邮件**，附上 3 次失败的请求 ID（`14126c9f-...`、`ce81eb14-...`、`49fe6f62-...`）和已排除因素清单，等 Apple 回复。
 - ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目。
 - ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断都已完成：账号删除入口（代码已修完+编译验证通过）+ 审核测试账号（已建号+已填进 App Store Connect 并保存）
 - ⚠️ **审核测试账号权限状态**：`shuyin.unlimited+applereview@gmail.com`（user_id 37）目前是 **7 天试用期，到期 2026-08-20 10:50**，不是永久，非必须修复
-- 下一步：去 App Store Connect 网页确认那个 App 记录（"vioce intake"）的平台/软件类型设置，必要时重建 App 记录，然后重新触发 Release (TestFlight)。
+- 下一步：纯等 Apple 邮件回复（这次问的是服务器端校验拒绝的具体原因，不是账号权限）。下次会话打开先问用户"Apple 邮件回了没有"。
 
 ---
 
@@ -35,6 +36,20 @@
 | `APPSTORE_PRIVATE_KEY` | `.p8` 私钥完整内容 | **必须是 Admin 角色的 Key**，App Manager 角色权限不够（见踩坑记录） |
 
 ---
+
+### 2026-08-14（续二）— 排除"传错 App"，找到真正上传阻断点并邮件求助 Apple
+
+接续上一条的"software type Undefined"疑点：
+
+- 用浏览器直接登录 App Store Connect 核实，发现确实有个多余的顶层 App 记录 "WatchVoiceIntakeWatch"（Apple ID 6799967312，Bundle ID `com.shuyinlab.watchvoiceintake.watchkitapp`）——按项目架构（Watch 是内嵌单一 target app，不该有独立 App Store 提交流程），这个记录本不该存在，但它的 TestFlight 页面显示"无构建版本"，说明从未真正接收过上传
+- 把 `upload_to_testflight` 的 `app_identifier` 换成精确的数字 `apple_id: "6799812210"`（vioce intake 的真实 Apple ID）避免字符串前缀匹配歧义，重跑——**报错完全不变**，证明"传错 App"这个猜测是错的，两次都精确打在 vioce intake 上
+- altool 报错文本里写着"the call to the **altool** completed with..."，确认走的是 Apple 已标记废弃的老工具，搜到多个开发者在官方论坛报告过同一个无解的 bug；换用 Xcode 13+ 支持的新路径——`exportOptionsPlist` 里 `destination: upload`，让 `xcodebuild -exportArchive` 直接完成导出+上传，跳过 altool/pilot——**这次真的连上了 Apple 服务器**（`ContentDelivery.log` 显示走到了"Sending SPI analysis"阶段），但在校验阶段收到 `409 STATE_ERROR.VALIDATION_ERROR`，除了一个请求 ID 什么原因都不给
+- 顺着这条线查：项目里 `iOS/`、`Watch/` 目录下**从来没有过 `.xcassets`/`AppIcon`**，这是 App Store 上传校验最常见的"无理由拒绝"诱因之一。生成了一个占位图标（1024×1024，Xcode 现代"单尺寸图标"格式），接入 `project.yml` 的 `ASSETCATALOG_COMPILER_APPICON_NAME` —— confirmed 图标真的编译进包了，但**上传校验报错依然一字不差**
+- 中途踩了个岔路：为了排除"Xcode 版本导致 Unknown Distribution Error"的假设，之前把 CI 固定在 Xcode 16.2，这次因为要编译 watchOS 图标资源，16.2 版本机器上缺配套的模拟器运行时，报 `No simulator runtime version ... available`——改回"自动选最新已装 Xcode"解决，16.2 那次固定纯粹是已经排除掉的诊断分支，不需要再保留
+- 继续加 `CFBundleIconName: AppIcon`（现代资产目录图标必须搭配这个 Info.plist 字段，否则常见静默失败）和 `ITSAppUsesNonExemptEncryption: false`（加密合规声明），重跑——**上传校验报错还是一字不差**，只是请求 ID 换了一个
+- 试过用 `xcrun altool --validate-app` 这个更老的校验专用命令找更详细的报错，两种参数写法都返回"无法确定平台"这个和内容无关的报错，确认这个子命令本身在当前 altool 版本下已经不可靠，放弃这条路
+- **结论**：图标、`CFBundleIconName`、加密合规声明、账号权限、team、证书、描述文件、认证方式全部核实/修复过，两条完全独立的上传通道（`altool`、`ContentDelivery`）都在同一阶段被拒且报错零细节——已经超出客户端能诊断的范围，只有 Apple 后台日志能看到真实原因
+- 直接在浏览器里操作 App Store Connect 网页版"联系我们"，在原工单 `20000133548930` 下发了一封新邮件（不是重开新工单），说明已排除的所有因素、附上 3 次失败请求 ID：`14126c9f-28ee-4e43-8c75-a3db7de580b6`、`ce81eb14-23f6-463e-89bf-cdf08332962c`、`49fe6f62-5c47-4801-b42e-3c5c2f270ccc`，请 Apple 从后台查具体原因
 
 ### 2026-08-14（续）— 一路修到 CI 第一次产出真正签名的 .ipa，卡在 App Store Connect 的 App 记录上
 
