@@ -4,12 +4,12 @@
 
 ## 当前状态（最后更新：2026-08-14）
 
-- 🔧 **推翻了"Apple 账号权限被拒绝"这个根因判断**——真正原因是 `fastlane/Fastfile` 的 `build_app` 没有传 `api_key`，导致 exportArchive 阶段完全没有认证凭证去问 Apple"这个 team 能用哪些分发方式"，Apple 返回空集合，才报出 `expected one {} but found app-store`。跟账号、付费团队、证书、描述文件、开发者协议全部无关——这些之前一一核实过都是对的。详见下方 2026-08-14 条目。
-- ✅ 已修复并推送，正在验证是否能真正跑通发布。
+- 🎉 **CI 第一次真正打出了签名正确的 .ipa 并成功导出**——`fastlane/Fastfile` 里连续 6 个真实 bug 全部修完（`api_key` 未传、描述文件未下载、`CODE_SIGNING_ALLOWED` 被关、`DEVELOPMENT_TEAM` 未传、archive 的 `ApplicationProperties` 字典缺失、`upload_to_testflight` 参数名错误），跟"Apple 账号权限被拒绝"这个此前认定的根因完全无关——账号、付费团队、证书、描述文件、开发者协议逐项核实过都没问题。详见下方 2026-08-14 条目，完整排查过程。
+- 🚧 **卡在最后一步：上传 TestFlight 报 `Unable to determine app platform for 'Undefined' software type'`**——这是 App Store Connect 里这个 App 记录本身的"软件类型/平台"字段异常，CI 侧已经无能为力，需要去网页端确认/修复这个 App 记录（很可能跟之前发现的 "vioce intake" 拼写错误是同一个记录）。
 - ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目。
 - ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断都已完成：账号删除入口（代码已修完+编译验证通过）+ 审核测试账号（已建号+已填进 App Store Connect 并保存）
 - ⚠️ **审核测试账号权限状态**：`shuyin.unlimited+applereview@gmail.com`（user_id 37）目前是 **7 天试用期，到期 2026-08-20 10:50**，不是永久，非必须修复
-- 下一步：等这次 Release (TestFlight) 跑完看是否真的成功；成功了就是上传 TestFlight → 提交 App Review → 正式上线，每步都要手动往前推。
+- 下一步：去 App Store Connect 网页确认那个 App 记录（"vioce intake"）的平台/软件类型设置，必要时重建 App 记录，然后重新触发 Release (TestFlight)。
 
 ---
 
@@ -35,6 +35,19 @@
 | `APPSTORE_PRIVATE_KEY` | `.p8` 私钥完整内容 | **必须是 Admin 角色的 Key**，App Manager 角色权限不够（见踩坑记录） |
 
 ---
+
+### 2026-08-14（续）— 一路修到 CI 第一次产出真正签名的 .ipa，卡在 App Store Connect 的 App 记录上
+
+接着上面那条继续排查，`api_key` 修复推送后仍失败，往下又连续挖出并修复了 5 个真实 bug（每个都验证过：改一处、推送、触发 CI、看结果，再改下一处）：
+
+1. `build_app` 根本没有 `api_key` 这个参数（fastlane 报错列出了完整可用参数列表，确认没有）——改用 `get_provisioning_profile`（`sigh`）在打包前显式下载安装两个 App Store 描述文件
+2. 描述文件下载成功、Archive 仍成功，Export 报错原样不变——查 `project.yml` 发现全局 `CODE_SIGNING_ALLOWED: NO` 从来没有被 release.yml 真正覆盖回 YES（project.yml 里其实早就留了预判这件事的注释），也就是说**所有历史失败的 Archive 从来没有真正签过名**，一直"假装成功"
+3. 打开签名后报标准错误"requires a development team"——`project.yml` 只设了 `PROVISIONING_PROFILE_SPECIFIER`，没设 `DEVELOPMENT_TEAM`，`export_team_id` 只影响导出不影响归档，补上
+4. 真正开始签名后，Export 依然是同一个 `Unknown Distribution Error`——换了 Xcode 26.3→16.2 两个大版本都一样，排除版本问题；下载 CI 保存的 `.xcdistributionlogs`（verbose 日志），发现**不只 app-store，连 Development 签名等所有分发方式都被拒绝**，说明问题不是权限，是这个 `.xcarchive` 本身没被 Xcode 识别为合法可分发归档包
+5. 加调试步骤 dump archive 的 `Info.plist`，确认 `ApplicationProperties` 字典完全缺失（只有 ArchiveVersion/CreationDate/Name/SchemeName）——但 `Products/`、`dSYMs/` 目录下 app 本身真的签好了（`_CodeSignature`、`embedded.mobileprovision`都在）。这是一个有据可查的 Xcode 老 bug：`xcodebuild archive` 纯命令行调用（不经过 Xcode.app 图形界面）经常不会写这个字典，即使签名完全正确。社区验证过的解法：改成先手动 `xcodebuild archive`，再用 `PlistBuddy` 从已签好名的 `.app/Info.plist` 里读值手动补上 `ApplicationProperties`，然后让 `gym`（`build_app`）跳过它自己的 archive 步骤（`skip_build_archive` + `archive_path`），只做 export+upload
+6. **补上这个字典后，Export 第一次真正成功**（`Successfully exported and signed the ipa file`）——CI 跑了几十次以来第一次产出真实签名的 .ipa。上传 TestFlight 报 `upload_to_testflight` 参数名错误（`platform` 应为 `app_platform`），修完后又报 `Unable to determine app platform for 'Undefined' software type` (1194)——这次报错来源换了，不是构建脚本的问题，而是 **App Store Connect 里这个 App 记录本身的"软件类型/平台"字段异常**，尝试显式传 `app_identifier` 也没用，说明卡点已经彻底转移到 App Store Connect 网页那一侧的 App 记录状态，不是 CI 能解决的
+
+**教训**：`Unknown Distribution Error` / "账号权限被拒绝"这类看起来像账号问题的报错，实际可能是完全不同层面的构建管线 bug（认证没传、签名被关、team 没传、archive 结构本身缺字段）——每一层看似"合理"的解释都要用真实日志验证，不能停在"看起来像账号问题"就归因到 Apple 那边。这次靠的是持续看 CI 日志细节（尤其是 verbose 分发日志和 archive 内容 dump），而不是猜测。
 
 ### 2026-08-14 — 推翻"账号权限被拒绝"根因，真正原因是 Fastfile 里 api_key 没传给 build_app
 
