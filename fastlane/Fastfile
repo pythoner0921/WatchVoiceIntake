@@ -15,6 +15,16 @@ platform :ios do
       is_key_content_base64: false,
     )
 
+    # api_key[:key_filepath] is only populated when the action is given
+    # key_filepath as input — we pass key_content instead, so it comes back
+    # empty (confirmed: "-authenticationKeyPath flag must be an absolute
+    # path to an existing file" with an empty path in the previous run).
+    # xcodebuild's own -authenticationKeyPath flag (used below) needs a real
+    # file regardless, so write one ourselves.
+    require "tmpdir"
+    auth_key_path = File.join(Dir.mktmpdir, "AuthKey_#{ENV['APPSTORE_KEY_ID']}.p8")
+    File.write(auth_key_path, ENV["APPSTORE_PRIVATE_KEY"])
+
     # build_app has no api_key parameter (confirmed via the "invalid
     # parameters" error listing every option gym accepts — api_key isn't
     # among them). The CI debug step that dumps
@@ -66,7 +76,7 @@ platform :ios do
           "com.shuyinlab.watchvoiceintake.watchkitapp" => "WatchVoiceIntakeWatch AppStore",
         }
       },
-      export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{api_key[:key_filepath]} -authenticationKeyID #{api_key[:key_id]} -authenticationKeyIssuerID #{api_key[:issuer_id]}"
+      export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{auth_key_path} -authenticationKeyID #{ENV['APPSTORE_KEY_ID']} -authenticationKeyIssuerID #{ENV['APPSTORE_ISSUER_ID']}"
     )
 
     upload_to_testflight(
