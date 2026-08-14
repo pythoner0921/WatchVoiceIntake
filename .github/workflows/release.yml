@@ -132,6 +132,10 @@ jobs:
           echo "Archive: $ARCHIVE"
           if [ -n "$ARCHIVE" ]; then
             plutil -p "$ARCHIVE/Info.plist"
+            echo "--- Products tree ---"
+            find "$ARCHIVE/Products" 2>&1
+            echo "--- dSYMs tree ---"
+            find "$ARCHIVE/dSYMs" 2>&1
           fi
 
       - name: Save distribution logs
