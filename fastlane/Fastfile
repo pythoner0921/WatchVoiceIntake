@@ -109,8 +109,13 @@ platform :ios do
       export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{auth_key_path} -authenticationKeyID #{ENV['APPSTORE_KEY_ID']} -authenticationKeyIssuerID #{ENV['APPSTORE_ISSUER_ID']}"
     )
 
+    # Export succeeded for the first time here — real progress. pilot
+    # (upload_to_testflight) failed with "App Platform must be ios,
+    # appletvos, osx, or xros", i.e. it couldn't infer the platform on its
+    # own in this bypassed-gym-archive flow. Pass it explicitly.
     upload_to_testflight(
       api_key: api_key,
+      platform: "ios",
       skip_waiting_for_build_processing: true,
     )
   end
