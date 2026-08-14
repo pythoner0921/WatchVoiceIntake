@@ -51,39 +51,55 @@ platform :ios do
       readonly: true,
     )
 
-    # Profiles are now confirmed present locally (SIGH_PROFILE_PATH points at
-    # real files) and Archive still succeeds, but exportArchive still hits
-    # the identical "Unknown Distribution Error" / "expected one {} but
-    # found app-store" — so it's neither a missing-profile nor an
-    # account/team problem. gym's build_app has no api_key parameter and
-    # does NOT forward ASC API key auth into the underlying `xcodebuild
-    # -exportArchive` subprocess on its own (unlike upload_to_testflight,
-    # which does its own auth). That subprocess is the one asking Apple's
-    # servers which distribution methods are valid, and it's running with
-    # zero Apple credentials of any kind — no signed-in Xcode account, no
-    # key. Passing xcodebuild's own `-authenticationKeyPath/-ID/-IssuerID`
-    # flags via export_xcargs is the documented way to authenticate that
-    # specific subprocess.
+    # With real signing now on (CODE_SIGNING_ALLOWED=YES, DEVELOPMENT_TEAM
+    # set), the .app products inside the archive are genuinely signed
+    # correctly (_CodeSignature, embedded.mobileprovision, dSYMs all
+    # present — confirmed via a debug dump of Products/ and dSYMs/) — but
+    # the archive's own top-level Info.plist is completely missing the
+    # ApplicationProperties dict (only ArchiveVersion/CreationDate/
+    # Name/SchemeName present). That dict is what IDEDistributionMethodManager
+    # reads to know what product to offer distribution methods for; with it
+    # missing, EVERY method gets rejected as "doesn't support distributing
+    # archive" — not just app-store, confirmed via the verbose distribution
+    # log. This is a known long-standing Xcode bug: `xcodebuild archive` run
+    # from the command line (not through Xcode.app's GUI) frequently skips
+    # writing ApplicationProperties, even for a correctly signed archive.
+    # Documented community workaround: archive separately, patch the dict in
+    # by hand using the values already sitting in the signed .app's own
+    # Info.plist, then have gym skip its own archive step and just export
+    # the patched archive.
+    archive_path = File.join(Dir.mktmpdir, "WatchVoiceIntake.xcarchive")
+    sh(
+      "xcodebuild -scheme WatchVoiceIntake -project WatchVoiceIntake.xcodeproj " \
+      "-configuration Release -destination 'generic/platform=iOS' " \
+      "-archivePath '#{archive_path}' " \
+      "CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} " \
+      "archive"
+    )
+
+    app_plist = File.join(archive_path, "Products/Applications/WatchVoiceIntake.app/Info.plist")
+    bundle_id = sh("/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' '#{app_plist}'").strip
+    short_version = sh("/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' '#{app_plist}'").strip
+    bundle_version = sh("/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' '#{app_plist}'").strip
+
+    archive_plist = File.join(archive_path, "Info.plist")
+    sh("/usr/libexec/PlistBuddy -c 'Add :ApplicationProperties dict' '#{archive_plist}'")
+    {
+      "ApplicationPath" => "Applications/WatchVoiceIntake.app",
+      "CFBundleIdentifier" => bundle_id,
+      "CFBundleShortVersionString" => short_version,
+      "CFBundleVersion" => bundle_version,
+      "SigningIdentity" => "Apple Distribution",
+      "Team" => ENV["APPLE_TEAM_ID"],
+    }.each do |key, value|
+      sh("/usr/libexec/PlistBuddy -c \"Add :ApplicationProperties:#{key} string #{value}\" '#{archive_plist}'")
+    end
+
     build_app(
-      project: "WatchVoiceIntake.xcodeproj",
-      scheme: "WatchVoiceIntake",
-      configuration: "Release",
+      skip_build_archive: true,
+      archive_path: archive_path,
       export_method: "app-store",
       export_team_id: ENV["APPLE_TEAM_ID"],
-      # project.yml's global settings block hard-codes CODE_SIGNING_ALLOWED:
-      # NO (intentionally, for the unsigned "compiles only" build.yml check)
-      # with a comment saying release.yml was supposed to override it back
-      # to YES — that override was never actually wired up anywhere. With
-      # signing disabled at the project level, every past archive "succeeded"
-      # without ever really signing anything, regardless of how correct the
-      # team/cert/profile/auth setup was, which is why every previous fix
-      # attempt here changed nothing. Override it for this archive only.
-      # Actually enabling signing surfaced the next real, standard Xcode
-      # error: "requires a development team" — project.yml sets
-      # CODE_SIGN_IDENTITY/PROVISIONING_PROFILE_SPECIFIER per target but
-      # never DEVELOPMENT_TEAM, and export_team_id only affects the export
-      # step, not archiving.
-      xcargs: "CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}",
       export_options: {
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
