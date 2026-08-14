@@ -15,19 +15,38 @@ platform :ios do
       is_key_content_base64: false,
     )
 
+    # build_app has no api_key parameter (confirmed via the "invalid
+    # parameters" error listing every option gym accepts — api_key isn't
+    # among them). The CI debug step that dumps
+    # ~/Library/MobileDevice/Provisioning Profiles/ showed "No such file or
+    # directory" on every failed run — the two named App Store profiles
+    # referenced below were never actually downloaded onto the runner, so
+    # archiving fell back to an automatically-managed (non-App-Store)
+    # signature, and exportArchive's IDEDistributionMethodManager then found
+    # no valid app-store method for that archive. Fetch the two existing
+    # profiles by name before archiving so manual signing has real local
+    # files to sign with.
+    get_provisioning_profile(
+      api_key: api_key,
+      app_identifier: "com.shuyinlab.watchvoiceintake",
+      provisioning_name: "WatchVoiceIntake AppStore",
+      team_id: ENV["APPLE_TEAM_ID"],
+      readonly: true,
+    )
+    get_provisioning_profile(
+      api_key: api_key,
+      app_identifier: "com.shuyinlab.watchvoiceintake.watchkitapp",
+      provisioning_name: "WatchVoiceIntakeWatch AppStore",
+      team_id: ENV["APPLE_TEAM_ID"],
+      readonly: true,
+    )
+
     build_app(
       project: "WatchVoiceIntake.xcodeproj",
       scheme: "WatchVoiceIntake",
       configuration: "Release",
       export_method: "app-store",
       export_team_id: ENV["APPLE_TEAM_ID"],
-      # api_key was previously only passed to upload_to_testflight below —
-      # exportArchive had no credentials to ask Apple which distribution
-      # methods are valid for this team, so IDEDistributionMethodManager got
-      # an empty set back and rejected "app-store" as an unrecognized method
-      # ("expected one {} but found app-store"). Not an account permission
-      # issue — the archive/export step itself was never authenticated.
-      api_key: api_key,
       export_options: {
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
