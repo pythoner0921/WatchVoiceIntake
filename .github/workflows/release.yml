@@ -118,6 +118,22 @@ jobs:
       # support distributing archive" for a wrong-product archive; worth
       # comparing against what our correctly-scoped archive here actually
       # says instead of continuing to guess from the wrapper error alone.
+      # Verbose distribution log shows EVERY method rejected, including
+      # plain Development signing — not just app-store — meaning the
+      # .xcarchive itself isn't being recognized as a distributable product
+      # archive at all, regardless of team/cert/profile/auth. project.yml
+      # already has a SKIP_INSTALL: NO comment anticipating exactly this
+      # (archive's Info.plist missing ApplicationProperties). Dump it to
+      # confirm before guessing further.
+      - name: Debug — dump archive Info.plist
+        if: always()
+        run: |
+          ARCHIVE=$(find /Users/runner/Library/Developer/Xcode/Archives -iname "*.xcarchive" -maxdepth 2 | head -1)
+          echo "Archive: $ARCHIVE"
+          if [ -n "$ARCHIVE" ]; then
+            plutil -p "$ARCHIVE/Info.plist"
+          fi
+
       - name: Save distribution logs
         if: always()
         run: |
