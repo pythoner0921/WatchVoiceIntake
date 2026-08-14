@@ -128,7 +128,7 @@ platform :ios do
 
     ipa_path = Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]
     sh(
-      "xcrun altool --validate-app -f '#{ipa_path}' -t ios " \
+      "xcrun altool --validate-app -f '#{ipa_path}' --type ios --platform ios " \
       "--apiKey #{ENV['APPSTORE_KEY_ID']} --apiIssuer #{ENV['APPSTORE_ISSUER_ID']} " \
       "--output-format xml",
       log: true
