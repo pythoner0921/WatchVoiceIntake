@@ -41,6 +41,19 @@ platform :ios do
       readonly: true,
     )
 
+    # Profiles are now confirmed present locally (SIGH_PROFILE_PATH points at
+    # real files) and Archive still succeeds, but exportArchive still hits
+    # the identical "Unknown Distribution Error" / "expected one {} but
+    # found app-store" — so it's neither a missing-profile nor an
+    # account/team problem. gym's build_app has no api_key parameter and
+    # does NOT forward ASC API key auth into the underlying `xcodebuild
+    # -exportArchive` subprocess on its own (unlike upload_to_testflight,
+    # which does its own auth). That subprocess is the one asking Apple's
+    # servers which distribution methods are valid, and it's running with
+    # zero Apple credentials of any kind — no signed-in Xcode account, no
+    # key. Passing xcodebuild's own `-authenticationKeyPath/-ID/-IssuerID`
+    # flags via export_xcargs is the documented way to authenticate that
+    # specific subprocess.
     build_app(
       project: "WatchVoiceIntake.xcodeproj",
       scheme: "WatchVoiceIntake",
@@ -52,7 +65,8 @@ platform :ios do
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
           "com.shuyinlab.watchvoiceintake.watchkitapp" => "WatchVoiceIntakeWatch AppStore",
         }
-      }
+      },
+      export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{api_key[:key_filepath]} -authenticationKeyID #{api_key[:key_id]} -authenticationKeyIssuerID #{api_key[:issuer_id]}"
     )
 
     upload_to_testflight(
