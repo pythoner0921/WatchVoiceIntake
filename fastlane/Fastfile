@@ -78,7 +78,12 @@ platform :ios do
       # without ever really signing anything, regardless of how correct the
       # team/cert/profile/auth setup was, which is why every previous fix
       # attempt here changed nothing. Override it for this archive only.
-      xcargs: "CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES",
+      # Actually enabling signing surfaced the next real, standard Xcode
+      # error: "requires a development team" — project.yml sets
+      # CODE_SIGN_IDENTITY/PROVISIONING_PROFILE_SPECIFIER per target but
+      # never DEVELOPMENT_TEAM, and export_team_id only affects the export
+      # step, not archiving.
+      xcargs: "CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}",
       export_options: {
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
