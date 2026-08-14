@@ -36,17 +36,18 @@ jobs:
       - name: Select Xcode
         run: |
           ls /Applications | grep -i xcode
-          # Every previous "Unknown Distribution Error" run (16.4 default
-          # symlink, then 26.3 latest) happened with real code signing
-          # accidentally disabled at the project level (project.yml's
-          # CODE_SIGNING_ALLOWED: NO was never actually overridden anywhere
-          # — see fastlane/Fastfile and PROJECT_LOG.md 2026-08-14). With
-          # that fixed, 26.3.0 (very new, WWDC-2026-cycle) still hit the
-          # identical error on an archive that genuinely signed successfully
-          # this time — worth ruling out a version-specific bug in that
-          # particular new Xcode build before assuming it's something else.
-          # Pin to a well-established stable release instead of "newest".
-          sudo xcode-select -s "/Applications/Xcode_16.2.app"
+          # Pinning to 16.2 was a one-off diagnostic (see PROJECT_LOG.md
+          # 2026-08-14) to rule out a version-specific bug in the very new
+          # 26.3.0 build — ruled out, the real "Unknown Distribution Error"
+          # cause was CODE_SIGNING_ALLOWED/DEVELOPMENT_TEAM/ApplicationProperties,
+          # not the Xcode version. Pinning to a non-default Xcode version
+          # backfired separately: this runner's installed Simulator runtimes
+          # only match the default/newest Xcode, so watchOS asset catalog
+          # compilation failed with "No simulator runtime version ...
+          # available" once an AppIcon triggered actool's on-demand-resources
+          # path. Back to picking the newest installed Xcode_*.app.
+          LATEST_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          sudo xcode-select -s "${LATEST_XCODE:-/Applications/Xcode.app}"
           xcodebuild -version
 
       - name: Install XcodeGen and fastlane
