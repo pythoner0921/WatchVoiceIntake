@@ -70,7 +70,7 @@ platform :ios do
     # the patched archive.
     archive_path = File.join(Dir.mktmpdir, "WatchVoiceIntake.xcarchive")
     sh(
-      "xcodebuild -scheme WatchVoiceIntake -project WatchVoiceIntake.xcodeproj " \
+      "cd .. && xcodebuild -scheme WatchVoiceIntake -project WatchVoiceIntake.xcodeproj " \
       "-configuration Release -destination 'generic/platform=iOS' " \
       "-archivePath '#{archive_path}' " \
       "CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} " \
