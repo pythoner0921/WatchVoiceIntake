@@ -36,18 +36,21 @@ jobs:
       - name: Select Xcode
         run: |
           ls /Applications | grep -i xcode
-          # Pinning to 16.2 was a one-off diagnostic (see PROJECT_LOG.md
-          # 2026-08-14) to rule out a version-specific bug in the very new
-          # 26.3.0 build — ruled out, the real "Unknown Distribution Error"
-          # cause was CODE_SIGNING_ALLOWED/DEVELOPMENT_TEAM/ApplicationProperties,
-          # not the Xcode version. Pinning to a non-default Xcode version
-          # backfired separately: this runner's installed Simulator runtimes
-          # only match the default/newest Xcode, so watchOS asset catalog
-          # compilation failed with "No simulator runtime version ...
-          # available" once an AppIcon triggered actool's on-demand-resources
-          # path. Back to picking the newest installed Xcode_*.app.
-          LATEST_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
-          sudo xcode-select -s "${LATEST_XCODE:-/Applications/Xcode.app}"
+          # Real root cause of the "Validation failed n/a / STATE_ERROR.
+          # VALIDATION_ERROR" upload rejection (see PROJECT_LOG.md
+          # 2026-08-17): a confirmed Apple regression in Xcode 26's
+          # altool/ContentDelivery upload path — when an app has multiple
+          # similar bundle IDs (our container app com.shuyinlab.watchvoiceintake
+          # + Watch companion com.shuyinlab.watchvoiceintake.watchkitapp is
+          # exactly this shape), it silently validates against the wrong
+          # one. fastlane maintainers confirmed this in
+          # https://github.com/fastlane/fastlane/issues/29743 (closed as
+          # dup of #29698), "fixed in Xcode 26.1" — we were on 26.3 and
+          # still hit it, so pin to Xcode 16.4 instead: it's this runner's
+          # actual paired default (simulator runtimes match it correctly,
+          # unlike the 16.2 side-install tried earlier) and entirely
+          # predates the whole Xcode 26 upload-path bug class.
+          sudo xcode-select -s "/Applications/Xcode_16.4.app"
           xcodebuild -version
 
       - name: Install XcodeGen and fastlane
