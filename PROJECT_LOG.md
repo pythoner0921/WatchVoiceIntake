@@ -2,17 +2,15 @@
 
 > Apple Watch 语音备忘录，自动转写+AI整理，直接写入 Research OS 的 AI Intake 笔记系统。Watch 只负责录音和可靠提交，不做任何本地转写/总结。
 
-## 当前状态（最后更新：2026-08-14）
+## 当前状态（最后更新：2026-08-17）
 
-- 🎉 **CI 第一次真正打出了签名正确的 .ipa 并成功导出**——`fastlane/Fastfile`/`project.yml` 里连续 8 个真实 bug 全部修完（`api_key` 未传、描述文件未下载、`CODE_SIGNING_ALLOWED` 被关、`DEVELOPMENT_TEAM` 未传、archive 的 `ApplicationProperties` 字典缺失、`upload_to_testflight` 参数名错误、App 图标从未配置、`CFBundleIconName`/加密合规声明缺失），跟"Apple 账号权限被拒绝"这个此前认定的根因完全无关——账号、付费团队、证书、描述文件、开发者协议逐项核实过都没问题。详见下方 2026-08-14 条目，完整排查过程。
-- 🚧 **卡在最后一步：上传 TestFlight 时被服务器无理由拒绝**（`Validation failed. n/a`，`STATE_ERROR.VALIDATION_ERROR`）——两条独立上传路径（`altool`、`xcodebuild -exportArchive destination:upload`）都在同一阶段被拒，报错完全一致且没有具体原因，客户端能查的手段（图标、Info.plist 必需字段、认证方式）都已排除。判断已经到了只有 Apple 后台日志能看到真实原因的地步。
-- ✅ **已通过 App Store Connect 网页版"联系我们"，在原工单 `20000133548930` 下发了新邮件**，附上 3 次失败的请求 ID（`14126c9f-...`、`ce81eb14-...`、`49fe6f62-...`）和已排除因素清单，等 Apple 回复。
+- 🔄 **战略转向：暂停纯 CI 自动发布，改回标准路径**——8 天纯命令行/CI 自动化连续挖出 10+ 个真实 bug（签名开关、证书、`ApplicationProperties`、图标、Apple Xcode 26 CLI 上传工具的已知回归 bug 等），用户拍板不再让 CI 碰真正的发布，改成在张梦 Mac 上用 Xcode 图形界面手动完成 Archive → Distribute App → 上传 TestFlight。详见下方 2026-08-17"全链路复盘"条目。
+- ✅ CI（`build.yml`，纯编译验证，不涉及签名/发布）继续保留，一直稳定工作，不受影响。
+- ✅ Apple Developer Support 工单 `20000133548930` 已回复（Yana，会员资格顾问）：明确这类技术报错不归她的团队管，建议改用 Apple Developer Forums 或转技术团队。基本确认这条求助线路问不出具体原因，已停止追问。
 - ⚠️ 项目前途更不明朗：research-os 侧的 Plan B（VoiceRecordPro + Google Drive 同步，见 `research-os/PROJECT_LOG.md`）**已端到端验证通过并投入日常使用**，仍两条线并行、不主动下线本项目。
-- ✅ 新增 `/appstore-preflight` skill + `APP_STORE_PREFLIGHT_CHECKLIST.md`，两项硬阻断都已完成：账号删除入口（代码已修完+编译验证通过）+ 审核测试账号（已建号+已填进 App Store Connect 并保存）
+- ✅ `APP_STORE_PREFLIGHT_CHECKLIST.md` 已有账号删除入口、审核测试账号、商店资料清单（App 名称/截图尺寸/描述字数限制等）。
 - ⚠️ **审核测试账号权限状态**：`shuyin.unlimited+applereview@gmail.com`（user_id 37）目前是 **7 天试用期，到期 2026-08-20 10:50**，不是永久，非必须修复
-- 下一步：纯等 Apple 邮件回复（这次问的是服务器端校验拒绝的具体原因，不是账号权限）。下次会话打开先问用户"Apple 邮件回了没有"。
-- ✅ 已设置每 4 小时自动检查案例 `20000133548930` 状态的定时任务（CronCreate，session-only，7天后自动失效，需要这个会话窗口保持打开）——有新回复会自动读取、按内容判断修法、重跑 CI、并主动汇报。
-- ✅ `APP_STORE_PREFLIGHT_CHECKLIST.md` 补了"商店资料清单"章节（App 名称/副标题/描述/关键词字数限制、截图尺寸要求、支持网址等）——用户确认这块（App Store 正式上架前的素材准备）目前完全没做，跟 TestFlight 技术卡点互相独立，可以趁等 Apple 回复的空档提前准备。
+- 下一步：用户/张梦在 Mac 上用 Xcode GUI 手动跑一次 Archive → Distribute App，看是否绕开纯 CLI 路线踩中的这些 bug；成功了就是真正发布到 TestFlight，失败了 Xcode GUI 会给出比 CI 日志详细得多的报错，继续往下查。
 
 ---
 
@@ -38,6 +36,28 @@
 | `APPSTORE_PRIVATE_KEY` | `.p8` 私钥完整内容 | **必须是 Admin 角色的 Key**，App Manager 角色权限不够（见踩坑记录） |
 
 ---
+
+### 2026-08-17 — 全链路复盘：从哪一步开始走偏，为什么"标准路径"一直没走通
+
+用户提出一个很实在的问题："为什么标准发布流程在我们这里就是不管用？"——趁着这次卡点，把从第一个 commit 到现在的完整历史重新捋了一遍（`git log --oneline --all`，逐条看关键提交的完整 diff/message），找真正的分叉点，而不是继续在最新这层症状上打补丁。
+
+**分叉点在哪**：
+
+1. 项目从第一个 commit（`9333e54`，2026-08-09）开始就是 **XcodeGen + 纯 CI 云编译**架构——`.xcodeproj` 从一开始就被 gitignore，理由是"CI 用 `xcodegen generate` 现场生成，不需要本地 Mac"。这个决定本身没问题（很多成熟团队这么做），但意味着**从第一天起，就没有人在真实 Xcode 图形界面里正常打开过这个项目**。
+2. 8/10 早期，Archive 阶段自动签名在全新 Apple Developer 账号上不稳定（`xcodebuild archive` 反复请求"开发用"描述文件而不是发布用的）。用户配合在张梦的 Mac 上，**用 Xcode 图形界面做了一次性 Distribution 证书引导**（Xcode → Settings → Accounts → Manage Certificates → 手动生成一次证书）——这是目前为止唯一一次真正用到 Xcode GUI 的环节，而且确实解决了"没有证书"这个问题。
+3. 但证书引导完之后，`xcodebuild archive` **依然**不稳定地请求开发用描述文件（commit `e020911` 的记录）。当时查资料确认这是"全新账号 + 纯命令行自动签名"的已知社区限制，于是**转向手动签名**：证书是 GUI 生成的没错，但 Provisioning Profile 改成在 Apple Developer Portal**网页**上手动创建，签名流程从此彻底脱离 Xcode，全部改成在 Fastfile/CI 脚本里手工拼参数。
+4. **这才是真正的分叉点**：从 `e020911` 往后（8/10 到 8/17，整整 8 天），Archive → Export → Upload 这一整段流程，再没有人在真实 Xcode 里点过一次"Product → Archive"→"Distribute App"这套标准发布向导。这套向导内部做的事（怎么打包、认哪个 App、怎么认证、怎么补全元数据）**没有公开完整文档**，只能靠一次次报错反推、在脚本里手工重新实现。
+
+**8 天里在纯命令行路线上手工补出来的坑**（几乎每一个都是"Xcode GUI 平时替你悄悄做掉、纯 CLI 必须手工补"的例子）：
+`CODE_SIGNING_ALLOWED` 被意外关闭 → `DEVELOPMENT_TEAM` 没传给 archive 步骤 → archive 的 `ApplicationProperties` 字典缺失（Xcode **命令行** archive 的已知长期 bug，GUI archive 不会有这个问题）→ App 图标从未配置 → `CFBundleIconName`/加密合规声明缺失 → 最后卡在 `STATE_ERROR.VALIDATION_ERROR`/`Undefined software type`，大概率和 **Apple 在 Xcode 26 CLI 上传工具（altool/ContentDelivery）里一个已确认的回归 bug**有关（`fastlane/fastlane#29743`：多个相似 Bundle ID 的 App，CLI 上传时会认错目标；我们主 App `com.shuyinlab.watchvoiceintake` + Watch 版 `com.shuyinlab.watchvoiceintake.watchkitapp` 正好是这个形状）——试过官方给的两个解法（换 Xcode 版本、显式传 `--apple-id`）都没解决，说明我们的情况可能是这个 bug 的一个变种，而不是完全一致的复现。
+
+**为什么"标准路径"看起来没有网上现成答案**：Xcode GUI 的"Distribute App"向导走的是完全不同的内部代码路径，理论上不受这个 CLI 专属的 Xcode 26 bug 影响，就算受影响，弹出来的也是人能看懂的错误对话框，不是一串没有细节的日志 ID。我们撞见的坑（尤其是最后这个 Xcode 26 CLI 回归）**太新**，公开的"标准流程"教程还没来得及覆盖——不是没人踩过，是踩过的人也才刚开始在 GitHub issue 里报告。
+
+**结论**：不是某一行代码写错了，是**架构选择本身在当前阶段的代价**——"全自动、零 Xcode GUI 参与"这条路线没有错，但前提是对 Xcode 签名/分发内部逻辑有足够经验能一步步复现每个隐式步骤。我们是摸着石头过河，8 天挖出 10+ 个真实 bug 才刚刚打通到"能连上 Apple 服务器、卡在校验"这一步，本身就说明这条路对当前阶段成本过高。
+
+**决定（用户拍板，2026-08-17）**：暂停纯 CI 自动发布路线。CI（`build.yml`）继续只做"编译验证"，这部分一直稳定，不受影响。真正的发布（Archive → Distribute App → 上传 TestFlight）改回标准路径——在张梦的 Mac 上用 Xcode 图形界面手动完成，需要点击操作的部分由用户/张梦通过远程桌面完成。
+
+**给以后的教训（延续 8/10 那条从未被真正吸取的教训）**：8/10 的记录里已经写过"遇到反复报错要先搜索业界标准做法，不要凭经验试"——但接下来 8 天还是延续了"纯 CI 自动化死磕到底"的路线，没有在更早的节点重新评估"要不要换回标准路径"。这次的真正教训不是"又发现一个新 bug"，是**该在更早的节点问一句"我们是不是在用一条没人验证过的路"，而不是一直往同一个方向加码**。
 
 ### 2026-08-14（续二）— 排除"传错 App"，找到真正上传阻断点并邮件求助 Apple
 
