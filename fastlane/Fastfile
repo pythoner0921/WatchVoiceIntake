@@ -95,19 +95,20 @@ platform :ios do
       sh("/usr/libexec/PlistBuddy -c \"Add :ApplicationProperties:#{key} string #{value}\" '#{archive_plist}'")
     end
 
-    # `altool --validate-app` turned out to be a dead end — it errors with
-    # "Cannot determine the platform; please specify --platform" regardless
-    # of flags tried (-t ios, --type ios --platform ios), because altool
-    # itself is deprecated by Apple and this subcommand no longer works
-    # reliably. Both real upload paths tried so far (pilot/altool upload,
-    # and xcodebuild's destination:upload/ContentDelivery) independently
-    # failed with the same opaque, detail-free "Validation failed n/a"
-    # (STATE_ERROR.VALIDATION_ERROR) — pointing at the package content
-    # itself, not either tool. Missing CFBundleIconName alongside a newly
-    # added asset-catalog app icon, and no ITSAppUsesNonExemptEncryption
-    # declaration, are both known silent causes of exactly this — added to
-    # project.yml's Info.plist properties. Back to the real upload path via
-    # destination: upload.
+    # Root cause of the opaque "Validation failed n/a" (STATE_ERROR.
+    # VALIDATION_ERROR), confirmed via fastlane/fastlane#29743 (closed as
+    # dup of #29698): a real Apple regression in Xcode 26's altool/
+    # ContentDelivery upload path — when an app has multiple similar bundle
+    # IDs (our container app com.shuyinlab.watchvoiceintake + Watch
+    # companion com.shuyinlab.watchvoiceintake.watchkitapp is exactly this
+    # shape), it silently validates against the wrong one. Pinning Xcode to
+    # 16.4 (see release.yml) alone didn't fix it — the identical error
+    # showed up there too — so the other half of the fix is required too:
+    # pass the numeric Apple ID directly as altool's own --apple-id flag.
+    # fastlane's apple_id: param on upload_to_testflight is NOT reliably
+    # forwarded to the underlying altool invocation (the bug the GitHub
+    # issue was actually filed about), so call altool directly instead of
+    # going through pilot.
     build_app(
       skip_build_archive: true,
       archive_path: archive_path,
@@ -117,10 +118,19 @@ platform :ios do
         provisioningProfiles: {
           "com.shuyinlab.watchvoiceintake" => "WatchVoiceIntake AppStore",
           "com.shuyinlab.watchvoiceintake.watchkitapp" => "WatchVoiceIntakeWatch AppStore",
-        },
-        destination: "upload",
+        }
       },
       export_xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{auth_key_path} -authenticationKeyID #{ENV['APPSTORE_KEY_ID']} -authenticationKeyIssuerID #{ENV['APPSTORE_ISSUER_ID']}"
+    )
+
+    FileUtils.mkdir_p(File.expand_path("~/private_keys"))
+    FileUtils.cp(auth_key_path, File.expand_path("~/private_keys/AuthKey_#{ENV['APPSTORE_KEY_ID']}.p8"))
+
+    ipa_path = Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]
+    sh(
+      "xcrun altool --upload-app -f '#{ipa_path}' -t ios " \
+      "--apiKey #{ENV['APPSTORE_KEY_ID']} --apiIssuer #{ENV['APPSTORE_ISSUER_ID']} " \
+      "--apple-id 6799812210"
     )
   end
 end
